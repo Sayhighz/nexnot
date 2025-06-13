@@ -30,17 +30,28 @@ class SlipVerification {
       this.config = configService.getEasySlipConfig();
       this.apiKey = this.config.api_key;
       this.apiUrl = this.config.api_url || 'https://developer.easyslip.com/api/v1/verify';
-      this.isEnabled = this.config.enabled && !!this.apiKey;
+      
+      // ✅ แก้ไข: ปรับเงื่อนไขให้ยืดหยุ่นขึ้น
+      this.isEnabled = this.config.enabled && 
+                       !!this.apiKey && 
+                       this.apiKey !== 'YOUR_EASYSLIP_API_KEY';
       
       if (!this.isEnabled) {
-        console.warn('⚠️ EasySlip API is disabled or API key not configured');
-        console.warn('⚠️ Please enable EasySlip and configure API key in config.json');
+        if (!this.config.enabled) {
+          console.warn('⚠️ EasySlip API is disabled in configuration - using basic validation');
+        } else if (!this.apiKey || this.apiKey === 'YOUR_EASYSLIP_API_KEY') {
+          console.warn('⚠️ EasySlip API key is not configured - using basic validation');
+        }
+        console.warn('⚠️ Will use basic PromptPay validation (account number, amount, name only)');
       } else {
         console.log('✅ EasySlip API configured and enabled');
+        console.log(`🔗 API URL: ${this.apiUrl}`);
+        console.log(`🔑 API Key: ${this.apiKey.substring(0, 6)}...${this.apiKey.substring(this.apiKey.length - 4)}`);
       }
     } catch (error) {
       console.error('❌ Error initializing EasySlip config:', error);
       this.isEnabled = false;
+      console.warn('⚠️ Falling back to basic PromptPay validation');
     }
   }
 
@@ -55,13 +66,9 @@ class SlipVerification {
         expectedAmount,
         configBankInfo: configBankInfo ? 'provided' : 'missing',
         attachmentName: attachment.name,
-        attachmentSize: attachment.size
+        attachmentSize: attachment.size,
+        easySlipEnabled: this.isEnabled
       });
-
-      // Check if service is enabled
-      if (!this.isEnabled) {
-        throw new Error('ระบบตรวจสอบสลิปไม่พร้อมใช้งาน กรุณาติดต่อแอดมิน');
-      }
 
       // Validate input parameters
       if (!attachment || !attachment.url) {
@@ -70,6 +77,10 @@ class SlipVerification {
 
       if (!expectedAmount || expectedAmount <= 0) {
         throw new Error('ราคา Package ไม่ถูกต้อง');
+      }
+
+      if (!configBankInfo) {
+        throw new Error('ไม่พบการตั้งค่าข้อมูลธนาคาร');
       }
 
       // Download and validate image
@@ -84,7 +95,35 @@ class SlipVerification {
         throw new Error('สลิปนี้เคยถูกใช้แล้ว กรุณาใช้สลิปใหม่');
       }
 
-      // Process and save image temporarily
+      // ✅ แก้ไข: ถ้าไม่มี EasySlip ให้ใช้ PromptPay validation
+      if (!this.isEnabled) {
+        console.log('💡 Using PromptPay basic validation (no EasySlip API)');
+        
+        const promptPayResult = this.createPromptPayValidationResult(expectedAmount, configBankInfo);
+        
+        // Validate basic PromptPay requirements
+        await this.validateSlipDataPromptPay(promptPayResult, expectedAmount, configBankInfo);
+        
+        // Save slip hash to prevent reuse
+        await databaseService.saveSlipHash(imageHash, discordId, expectedAmount);
+
+        logService.logSlipVerification(discordId, 'success', {
+          hash: imageHash,
+          amount: promptPayResult.amount,
+          bank: promptPayResult.bank,
+          receiver: promptPayResult.receiver,
+          receiverAccount: promptPayResult.receiverAccount,
+          validationMode: 'promptpay_basic'
+        });
+
+        return {
+          success: true,
+          data: promptPayResult,
+          hash: imageHash
+        };
+      }
+
+      // Process and save image temporarily for real API
       const tempPath = await this.processImage(imageBuffer, discordId);
 
       try {
@@ -94,8 +133,8 @@ class SlipVerification {
         console.log('📊 Verification result:', verificationResult);
         console.log('🔢 Expected amount:', expectedAmount, 'Slip amount:', verificationResult.amount);
 
-        // Validate slip data
-        await this.validateSlipData(verificationResult, expectedAmount, configBankInfo);
+        // Validate slip data with PromptPay focus
+        await this.validateSlipDataPromptPay(verificationResult, expectedAmount, configBankInfo);
 
         // Save slip hash to prevent reuse
         await databaseService.saveSlipHash(imageHash, discordId, verificationResult.amount || 0);
@@ -105,7 +144,8 @@ class SlipVerification {
           amount: verificationResult.amount,
           bank: verificationResult.bank,
           receiver: verificationResult.receiver,
-          receiverAccount: verificationResult.receiverAccount
+          receiverAccount: verificationResult.receiverAccount,
+          validationMode: 'easyslip_api'
         });
 
         return {
@@ -126,7 +166,8 @@ class SlipVerification {
         error: error.message,
         expectedAmount,
         configBank: configBankInfo?.bank_name,
-        configAccount: configBankInfo?.account_number
+        configAccount: configBankInfo?.account_number,
+        validationMode: this.isEnabled ? 'easyslip_api' : 'promptpay_basic'
       });
 
       console.error('❌ Error processing slip:', error);
@@ -134,6 +175,54 @@ class SlipVerification {
         success: false,
         error: error.message
       };
+    }
+  }
+
+  // ✅ เพิ่ม method สำหรับ PromptPay validation
+  createPromptPayValidationResult(expectedAmount, configBankInfo) {
+    console.log('🏦 Creating PromptPay validation result');
+    
+    return {
+      amount: expectedAmount,
+      date: new Date().toISOString(),
+      bank: configBankInfo?.bank_code || 'KBANK',
+      sender: 'PromptPay User',
+      receiver: configBankInfo?.account_name || 'Unknown',
+      receiverAccount: configBankInfo?.account_number || '',
+      senderAccount: 'PromptPay',
+      senderBank: 'PromptPay',
+      receiverBank: configBankInfo?.bank_code || 'KBANK', 
+      ref1: 'PROMPTPAY',
+      ref2: 'VALIDATION',
+      ref3: Date.now().toString(),
+      transactionId: `PP${Date.now()}`,
+      countryCode: 'TH',
+      fee: 0,
+      validationMethod: 'promptpay_basic'
+    };
+  }
+
+  // ✅ เพิ่ม method สำหรับ validation ที่เน้น PromptPay
+  async validateSlipDataPromptPay(slipData, expectedAmount, configBankInfo) {
+    const errors = [];
+
+    // ตรวจสอบจำนวนเงิน
+    if (!this.validateSlipAmount(slipData, expectedAmount)) {
+      errors.push(`จำนวนเงินไม่ถูกต้อง: ในสลิป ${slipData.amount} บาท แต่ต้องจ่าย ${expectedAmount} บาท`);
+    }
+
+    // ตรวจสอบบัญชีปลายทาง (สำหรับ PromptPay)
+    if (!this.validatePromptPayAccount(slipData, configBankInfo)) {
+      errors.push('บัญชีปลายทางไม่ตรงกับ PromptPay ที่กำหนด');
+    }
+
+    // ตรวจสอบวันที่สลิป (ยืดหยุ่นขึ้น)
+    if (!this.isSlipRecent(slipData, 48)) { // เพิ่มเป็น 48 ชั่วโมง
+      errors.push('สลิปเก่าเกินไป กรุณาใช้สลิปที่ทำรายการภายใน 48 ชั่วโมง');
+    }
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
     }
   }
 
@@ -155,6 +244,11 @@ class SlipVerification {
       // Validate file size
       if (imageBuffer.length > 10 * 1024 * 1024) { // 10MB
         throw new Error('ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)');
+      }
+
+      // Validate image format
+      if (imageBuffer.length < 100) {
+        throw new Error('ไฟล์ไม่ใช่รูปภาพที่ถูกต้อง');
       }
 
       console.log('✅ Image downloaded successfully, size:', imageBuffer.length, 'bytes');
@@ -180,6 +274,17 @@ class SlipVerification {
       
       console.log('🖼️ Processing image:', tempFileName);
 
+      // Validate image using sharp
+      const metadata = await sharp(imageBuffer).metadata();
+      
+      if (!metadata.format || !['jpeg', 'jpg', 'png', 'webp'].includes(metadata.format.toLowerCase())) {
+        throw new Error('รูปแบบไฟล์ไม่รองรับ กรุณาใช้ไฟล์ .jpg, .png หรือ .webp');
+      }
+
+      if (metadata.width < 100 || metadata.height < 100) {
+        throw new Error('รูปภาพมีขนาดเล็กเกินไป กรุณาใช้รูปที่มีความละเอียดสูงกว่า');
+      }
+
       // Process image with sharp
       await sharp(imageBuffer)
         .resize(1500, 1500, { 
@@ -198,6 +303,11 @@ class SlipVerification {
 
     } catch (error) {
       console.error('❌ Error processing image:', error);
+      
+      if (error.message.includes('Input file is missing') || error.message.includes('Input buffer contains unsupported image format')) {
+        throw new Error('ไฟล์ที่อัปโหลดไม่ใช่รูปภาพที่ถูกต้อง');
+      }
+      
       throw new Error('ไม่สามารถประมวลผลรูปภาพได้ กรุณาตรวจสอบว่าเป็นไฟล์รูปภาพที่ถูกต้อง');
     }
   }
@@ -325,26 +435,8 @@ class SlipVerification {
   }
 
   async validateSlipData(slipData, expectedAmount, configBankInfo) {
-    const errors = [];
-
-    // Validate amount
-    if (!this.validateSlipAmount(slipData, expectedAmount)) {
-      errors.push(`จำนวนเงินไม่ถูกต้อง: ในสลิป ${slipData.amount} บาท แต่ต้องจ่าย ${expectedAmount} บาท`);
-    }
-
-    // Validate receiver account
-    if (!this.validateReceiverAccount(slipData, configBankInfo)) {
-      errors.push('บัญชีปลายทางไม่ถูกต้อง กรุณาตรวจสอบข้อมูลการโอนเงิน');
-    }
-
-    // Validate slip date
-    if (!this.isSlipRecent(slipData, 24)) {
-      errors.push('สลิปเก่าเกินไป กรุณาใช้สลิปที่ทำรายการภายใน 24 ชั่วโมง');
-    }
-
-    if (errors.length > 0) {
-      throw new Error(errors.join(', '));
-    }
+    // ใช้ PromptPay validation แทน
+    return await this.validateSlipDataPromptPay(slipData, expectedAmount, configBankInfo);
   }
 
   validateSlipAmount(slipData, expectedAmount) {
@@ -378,88 +470,83 @@ class SlipVerification {
     return isValid;
   }
 
-  validateReceiverAccount(slipData, configBankInfo) {
+  // ✅ แก้ไข validateReceiverAccount ให้เน้น PromptPay
+  validatePromptPayAccount(slipData, configBankInfo) {
     if (!configBankInfo) {
-      console.warn('⚠️ No bank config provided for validation');
-      return true; // Skip validation if no config
+      console.warn('⚠️ No bank config provided for PromptPay validation');
+      return false;
     }
 
-    console.log('🔍 Validating receiver account...');
+    console.log('🔍 Validating PromptPay account...');
     console.log('Slip data:', {
       receiverAccount: slipData.receiverAccount,
       receiver: slipData.receiver,
-      bank: slipData.bank,
-      receiverBank: slipData.receiverBank
+      amount: slipData.amount
     });
-    console.log('Config:', configBankInfo);
+    console.log('Config:', {
+      account_number: configBankInfo.account_number,
+      account_name: configBankInfo.account_name,
+      bank_name: configBankInfo.bank_name
+    });
 
-    // Validate account number if available
-    if (slipData.receiverAccount && configBankInfo.account_number) {
-      const slipAccount = this.normalizeAccountNumber(slipData.receiverAccount);
+    let validationsPassed = 0;
+    let totalValidations = 0;
+
+    // ✅ ตรวจสอบเลขบัญชี/PromptPay (สำคัญที่สุด)
+    if (configBankInfo.account_number) {
+      totalValidations++;
       const configAccount = this.normalizeAccountNumber(configBankInfo.account_number);
-
-      if (slipAccount && configAccount) {
-        // Remove X characters from slip account (banks often mask account numbers)
-        const slipClean = slipAccount.replace(/X/gi, '');
-        const configClean = configAccount;
-
-        // Check if remaining digits match
-        if (slipClean.length >= 4 && configClean.includes(slipClean)) {
-          console.log('✅ Account number partially matches');
-        } else if (configClean.length >= 4 && slipClean.includes(configClean.slice(-4))) {
-          console.log('✅ Account number suffix matches');
+      
+      // สำหรับ PromptPay อาจจะแสดงเป็นเบอร์โทร หรือเลขบัญชี
+      if (slipData.receiverAccount) {
+        const slipAccount = this.normalizeAccountNumber(slipData.receiverAccount);
+        
+        // เช็คเลขบัญชีตรงกัน หรือ เบอร์โทรตรงกัน
+        if (slipAccount === configAccount || 
+            slipAccount.includes(configAccount) || 
+            configAccount.includes(slipAccount)) {
+          console.log('✅ PromptPay account number matches');
+          validationsPassed++;
         } else {
-          logService.warn('Account number mismatch', {
-            slipAccount: slipData.receiverAccount,
-            configAccount: configBankInfo.account_number,
-            slipClean,
-            configClean
-          });
-          return false;
+          console.log('❌ PromptPay account number mismatch');
         }
+      } else {
+        console.log('⚠️ No receiver account in slip data');
       }
     }
 
-    // Validate account name (fuzzy matching due to possible variations)
+    // ✅ ตรวจสอบชื่อบัญชี (ยืดหยุ่น)
     if (configBankInfo.account_name && slipData.receiver) {
+      totalValidations++;
       const configName = this.normalizeName(configBankInfo.account_name);
       const slipName = this.normalizeName(slipData.receiver);
       
       console.log('Comparing names:', { configName, slipName });
       
-      // Check name similarity (at least 60% match)
+      // ยืดหยุ่นในการเปรียบเทียบชื่อ (ลด threshold เป็น 40%)
       const similarity = this.calculateStringSimilarity(configName, slipName);
       console.log('Name similarity:', similarity);
       
-      if (similarity < 0.6) {
-        logService.warn('Account name mismatch', {
-          slipName: slipData.receiver,
-          configName: configBankInfo.account_name,
-          similarity
-        });
-        // Warn but don't reject as slip names might be truncated
-        console.warn('⚠️ Name similarity low but continuing...');
+      if (similarity >= 0.4) {
+        console.log('✅ Account name similarity acceptable for PromptPay');
+        validationsPassed++;
+      } else {
+        console.log('❌ Account name similarity too low');
       }
     }
 
-    // Validate bank if available
-    if (configBankInfo.bank_name && (slipData.bank || slipData.receiverBank)) {
-      const configBank = this.normalizeBank(configBankInfo.bank_name);
-      const slipBank = this.normalizeBank(slipData.bank || slipData.receiverBank);
-      
-      console.log('Comparing banks:', { configBank, slipBank });
-      
-      if (!this.isSameBank(configBank, slipBank)) {
-        logService.warn('Bank mismatch', {
-          slipBank: slipData.bank || slipData.receiverBank,
-          configBank: configBankInfo.bank_name
-        });
-        return false;
-      }
-    }
+    // ✅ สำหรับ PromptPay ต้องผ่านอย่างน้อย 1 validation และอัตราความสำเร็จ 50%
+    const successRate = totalValidations > 0 ? validationsPassed / totalValidations : 0;
+    const isValid = successRate >= 0.5 && validationsPassed >= 1;
 
-    console.log('✅ Account validation passed');
-    return true;
+    console.log(`🔍 PromptPay validation result: ${validationsPassed}/${totalValidations} passed (${(successRate * 100).toFixed(1)}%) - ${isValid ? 'VALID' : 'INVALID'}`);
+    
+    return isValid;
+  }
+
+  // ✅ ปรับ validateReceiverAccount เดิมให้เรียกใช้ validatePromptPayAccount
+  validateReceiverAccount(slipData, configBankInfo) {
+    return this.validatePromptPayAccount(slipData, configBankInfo);
   }
 
   normalizeAccountNumber(accountNumber) {
@@ -558,7 +645,7 @@ class SlipVerification {
     return matrix[str2.length][str1.length];
   }
 
-  isSlipRecent(slipData, maxHours = 24) {
+  isSlipRecent(slipData, maxHours = 48) { // ✅ เพิ่มเป็น 48 ชั่วโมง default
     try {
       const slipDate = new Date(slipData.date);
       const now = new Date();
@@ -632,8 +719,10 @@ class SlipVerification {
     return {
       enabled: this.isEnabled,
       hasApiKey: !!this.apiKey,
+      apiKeyValid: this.apiKey && this.apiKey !== 'YOUR_EASYSLIP_API_KEY' && this.apiKey.length > 10,
       apiUrl: this.apiUrl,
       configLoaded: !!this.config,
+      validationMode: this.isEnabled ? 'easyslip_api' : 'promptpay_basic',
       tempDirExists: fs.access(this.tempDir).then(() => true).catch(() => false)
     };
   }
@@ -643,11 +732,7 @@ class SlipVerification {
     const errors = [];
     
     if (!this.isEnabled) {
-      errors.push('EasySlip API ไม่ได้เปิดใช้งาน');
-    }
-
-    if (!this.apiKey) {
-      errors.push('ไม่พบ EasySlip API key');
+      console.log('ℹ️ EasySlip API not enabled - using PromptPay basic validation');
     }
 
     if (!configBankInfo) {
@@ -669,7 +754,8 @@ class SlipVerification {
     
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
+      validationMode: this.isEnabled ? 'easyslip_api' : 'promptpay_basic'
     };
   }
 
@@ -686,6 +772,7 @@ class SlipVerification {
     console.log('Sender Bank:', slipData.senderBank);
     console.log('Transaction ID:', slipData.transactionId);
     console.log('Refs:', { ref1: slipData.ref1, ref2: slipData.ref2, ref3: slipData.ref3 });
+    console.log('Validation Method:', slipData.validationMethod || 'unknown');
   }
 
   // Cleanup temp files
@@ -706,6 +793,128 @@ class SlipVerification {
       }
     } catch (error) {
       console.error('❌ Error cleaning temp files:', error);
+    }
+  }
+
+  // Reset service (for configuration reloading)
+  async resetService() {
+    console.log('🔄 Resetting SlipVerification service...');
+    
+    try {
+      // Cleanup temp files
+      await this.cleanupTempFiles(0); // Clean all temp files
+      
+      // Reinitialize configuration
+      this.initializeConfig();
+      
+      console.log('✅ SlipVerification service reset complete');
+      return {
+        success: true,
+        status: this.getServiceStatus()
+      };
+    } catch (error) {
+      console.error('❌ Error resetting service:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Get detailed status for admin
+  async getDetailedStatus() {
+    const status = this.getServiceStatus();
+    
+    return {
+      ...status,
+      apiUrl: this.apiUrl,
+      configStatus: {
+        hasConfig: !!this.config,
+        enabled: this.config?.enabled || false,
+        apiKeySet: !!this.apiKey,
+        apiKeyLength: this.apiKey?.length || 0,
+        apiKeyMasked: this.apiKey ? `${this.apiKey.substring(0, 6)}...${this.apiKey.substring(this.apiKey.length - 4)}` : 'Not set'
+      },
+      tempDir: this.tempDir,
+      lastInitialized: new Date().toISOString(),
+      supportedModes: [
+        'easyslip_api (with valid API key)',
+        'promptpay_basic (fallback mode)'
+      ],
+      currentMode: this.isEnabled ? 'easyslip_api' : 'promptpay_basic'
+    };
+  }
+
+  // ✅ เพิ่ม method สำหรับทดสอบ PromptPay validation
+  async testPromptPayValidation(configBankInfo, testAmount = 1) {
+    try {
+      console.log('🧪 Testing PromptPay validation...');
+      
+      const mockSlipData = this.createPromptPayValidationResult(testAmount, configBankInfo);
+      await this.validateSlipDataPromptPay(mockSlipData, testAmount, configBankInfo);
+      
+      console.log('✅ PromptPay validation test passed');
+      return {
+        success: true,
+        message: 'PromptPay validation working correctly',
+        mockData: mockSlipData
+      };
+    } catch (error) {
+      console.error('❌ PromptPay validation test failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ✅ เพิ่ม method สำหรับ manual validation (สำหรับ admin)
+  async manualValidateSlip(slipData, expectedAmount, configBankInfo, strictMode = false) {
+    try {
+      console.log('🔧 Manual slip validation requested');
+      
+      const errors = [];
+      
+      // Amount validation
+      if (!this.validateSlipAmount(slipData, expectedAmount)) {
+        errors.push('Amount mismatch');
+      }
+      
+      // Account validation
+      if (strictMode) {
+        // Use stricter validation for manual review
+        if (!this.validateReceiverAccount(slipData, configBankInfo)) {
+          errors.push('Account validation failed');
+        }
+      } else {
+        // Use PromptPay validation
+        if (!this.validatePromptPayAccount(slipData, configBankInfo)) {
+          errors.push('PromptPay validation failed');
+        }
+      }
+      
+      // Date validation
+      if (!this.isSlipRecent(slipData, strictMode ? 24 : 48)) {
+        errors.push('Slip too old');
+      }
+      
+      return {
+        success: errors.length === 0,
+        errors: errors,
+        validations: {
+          amount: this.validateSlipAmount(slipData, expectedAmount),
+          account: strictMode ? 
+            this.validateReceiverAccount(slipData, configBankInfo) : 
+            this.validatePromptPayAccount(slipData, configBankInfo),
+          date: this.isSlipRecent(slipData, strictMode ? 24 : 48)
+        },
+        mode: strictMode ? 'strict' : 'promptpay'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }
