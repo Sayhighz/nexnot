@@ -1,32 +1,14 @@
-import QRCode from 'qrcode';
 import { createCanvas, loadImage } from 'canvas';
 import Helpers from '../utils/helpers.js';
 
 class QRCodeService {
   async generatePaymentQR(amount, packageName, bankInfo) {
     try {
-      // Create payment text
-      const paymentText = `
-ชำระเงิน: ${Helpers.formatCurrency(amount)}
-Package: ${packageName}
-ธนาคาร: ${bankInfo.bank_name}
-เลขบัญชี: ${bankInfo.account_number}
-ชื่อบัญชี: ${bankInfo.account_name}
-      `.trim();
-      
-      const qrCodeDataURL = await QRCode.toDataURL(paymentText, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        },
-        errorCorrectionLevel: 'M'
-      });
-
-      return qrCodeDataURL;
+      // ใช้ PromptPay URL แทน QR Code library
+      const promptPayUrl = `https://promptpay.io/${bankInfo.account_number}/${amount}`;
+      return promptPayUrl;
     } catch (error) {
-      console.error('❌ Error generating QR code:', error);
+      console.error('❌ Error generating payment QR:', error);
       throw error;
     }
   }
@@ -83,64 +65,71 @@ Package: ${packageName}
       ctx.fillText('ข้อมูลการโอน:', 40, 270);
       
       ctx.font = '16px Arial';
-     ctx.fillText(`ธนาคาร: ${bankInfo.bank_name}`, 40, 295);
-     ctx.fillText(`เลขบัญชี: ${bankInfo.account_number}`, 40, 315);
-     ctx.fillText(`ชื่อบัญชี: ${bankInfo.account_name}`, 40, 335);
+      ctx.fillText(`ธนาคาร: ${bankInfo.bank_name}`, 40, 295);
+      ctx.fillText(`เลขบัญชี: ${bankInfo.account_number}`, 40, 315);
+      ctx.fillText(`ชื่อบัญชี: ${bankInfo.account_name}`, 40, 335);
 
-     // QR Code
-     const qrCodeDataURL = await this.generatePaymentQR(amount, packageName, bankInfo);
-     const qrImage = await loadImage(qrCodeDataURL);
-     
-     // Center QR code
-     const qrSize = 200;
-     const qrX = (canvas.width - qrSize) / 2;
-     const qrY = 380;
-     
-     ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+      // QR Code จาก PromptPay URL
+      const promptPayUrl = `https://promptpay.io/${bankInfo.account_number}/${amount}`;
+      
+      try {
+        const qrImage = await loadImage(promptPayUrl);
+        
+        // Center QR code
+        const qrSize = 200;
+        const qrX = (canvas.width - qrSize) / 2;
+        const qrY = 380;
+        
+        ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+      } catch (qrError) {
+        console.warn('⚠️ Could not load QR image, showing text instead');
+        
+        // แสดงข้อความแทนถ้าโหลด QR ไม่ได้
+        ctx.fillStyle = '#6c757d';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('สแกน QR Code ด้วยแอพธนาคาร', 250, 420);
+        ctx.fillText('หรือโอนเงินตามข้อมูลด้านบน', 250, 450);
+        ctx.font = '14px Arial';
+        ctx.fillText(`PromptPay: ${bankInfo.account_number}`, 250, 480);
+        ctx.fillText(`จำนวน: ${Helpers.formatCurrency(amount)}`, 250, 500);
+      }
 
-     // Instructions
-     ctx.fillStyle = '#6c757d';
-     ctx.font = '14px Arial';
-     ctx.textAlign = 'center';
-     ctx.fillText('สแกน QR Code หรือโอนเงินตามข้อมูลด้านบน', 250, 610);
-     ctx.fillText('จากนั้นส่งสลิปการโอนเงินมาให้ตรวจสอบ', 250, 630);
+      // Instructions
+      ctx.fillStyle = '#6c757d';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('สแกน QR Code หรือโอนเงินตามข้อมูลด้านบน', 250, 610);
+      ctx.fillText('จากนั้นส่งสลิปการโอนเงินมาให้ตรวจสอบ', 250, 630);
 
-     // Footer
-     ctx.fillStyle = '#95a5a6';
-     ctx.font = '12px Arial';
-     ctx.fillText(`สร้างเมื่อ: ${Helpers.formatDateTime(new Date())}`, 250, 660);
+      // Footer
+      ctx.fillStyle = '#95a5a6';
+      ctx.font = '12px Arial';
+      ctx.fillText(`สร้างเมื่อ: ${Helpers.formatDateTime(new Date())}`, 250, 660);
 
-     return canvas.toBuffer('image/png');
-   } catch (error) {
-     console.error('❌ Error generating payment image:', error);
-     throw error;
-   }
- }
+      return canvas.toBuffer('image/png');
+    } catch (error) {
+      console.error('❌ Error generating payment image:', error);
+      throw error;
+    }
+  }
 
- async generatePromptPayQR(phoneNumber, amount) {
-   try {
-     // PromptPay QR Code format
-     const promptPayData = this.generatePromptPayData(phoneNumber, amount);
-     
-     const qrCodeDataURL = await QRCode.toDataURL(promptPayData, {
-       width: 300,
-       margin: 2,
-       errorCorrectionLevel: 'M'
-     });
+  // สำหรับใช้ใน embed โดยตรง
+  getPromptPayUrl(amount, accountNumber) {
+    return `https://promptpay.io/${accountNumber}/${amount}`;
+  }
 
-     return qrCodeDataURL;
-   } catch (error) {
-     console.error('❌ Error generating PromptPay QR:', error);
-     throw error;
-   }
- }
-
- generatePromptPayData(phoneNumber, amount) {
-   // Simplified PromptPay QR format
-   // In production, you should use proper PromptPay library
-   const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-   return `00020101021229370016A000000677010111${cleanPhone.padStart(13, '0')}5802TH5406${amount.toFixed(2)}6304`;
- }
+  // สำหรับใช้ใน embed แบบง่าย
+  async generateSimplePaymentEmbed(amount, packageName, bankInfo) {
+    const promptPayUrl = this.getPromptPayUrl(amount, bankInfo.account_number);
+    
+    return {
+      url: promptPayUrl,
+      bankInfo: bankInfo,
+      amount: amount,
+      packageName: packageName
+    };
+  }
 }
 
 export default new QRCodeService();

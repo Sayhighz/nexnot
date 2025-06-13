@@ -72,11 +72,17 @@ class DiscordBot {
       this.scoreboardManager.init();
     });
 
-    // ในส่วน event handler:
+    // Enhanced interaction handler
     this.client.on('interactionCreate', async (interaction) => {
       try {
         if (interaction.isButton()) {
-          await this.topupSystem.handleButtonInteraction(interaction);
+          // Handle scoreboard navigation
+          if (interaction.customId.startsWith('scoreboard_')) {
+            await this.scoreboardManager.handleScoreboardNavigation(interaction);
+          } else {
+            // Handle other buttons
+            await this.topupSystem.handleButtonInteraction(interaction);
+          }
         } else if (interaction.isStringSelectMenu()) {
           await this.topupSystem.handleSelectMenuInteraction(interaction);
         } else if (interaction.isModalSubmit()) {
@@ -103,7 +109,7 @@ class DiscordBot {
 
       try {
         // Handle slip verification in ticket channels
-        if (message.channel.name && message.channel.name.startsWith("topup-")) {
+        if (message.channel.name && (message.channel.name.startsWith("topup-") || message.channel.name.startsWith("support-"))) {
           await this.topupSystem.handleSlipSubmission(message);
         }
       } catch (error) {
@@ -122,6 +128,9 @@ process.on("SIGINT", () => {
   console.log("Shutting down bot...");
   if (bot.client) {
     bot.client.destroy();
+  }
+  if (bot.scoreboardManager) {
+    bot.scoreboardManager.shutdown();
   }
   process.exit(0);
 });

@@ -43,7 +43,6 @@ class DatabaseService {
     }
   }
 
-  // ... rest of the methods remain the same
   async getConnection() {
     if (!this.pool) {
       await this.connect();
@@ -83,16 +82,127 @@ class DatabaseService {
     }
   }
 
+// เพิ่มฟังก์ชัน helper ที่ปลอดภัย
+// เพิ่มฟังก์ชัน helper ที่ปลอดภัย
+safeParseJSON(data) {
+  try {
+    if (typeof data === 'string') {
+      return JSON.parse(data);
+    } else if (typeof data === 'object' && data !== null) {
+      return data; // ถ้าเป็น object อยู่แล้ว
+    } else {
+      return {}; // fallback
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to parse JSON data:', error);
+    return {}; // fallback
+  }
+}
 
+// แทนที่ getDiscordUserData ทั้งหมด
+async getDiscordUserData(discordId) {
+  const query = 'SELECT * FROM ngc_discord_users WHERE guid = ?';
+  try {
+    const rows = await this.executeQuery(query, [discordId]);
+    if (rows.length > 0) {
+      const userData = rows[0];
+      userData.parsedData = this.safeParseJSON(userData.data);
+      return userData;
+    }
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting discord user data:', error);
+    throw error;
+  }
+}
+
+// แทนที่ getPlayerData ทั้งหมด
+async getPlayerData(steam64) {
+  const query = 'SELECT * FROM ngc_players WHERE guid = ?';
+  try {
+    const rows = await this.executeQuery(query, [steam64]);
+    if (rows.length > 0) {
+      const playerData = rows[0];
+      playerData.parsedData = this.safeParseJSON(playerData.data);
+      return playerData;
+    }
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting player data:', error);
+    throw error;
+  }
+}
+
+// แทนที่ getSteam64FromDiscord ทั้งหมด
+async getSteam64FromDiscord(discordId) {
+  try {
+    const userData = await this.getDiscordUserData(discordId);
+    if (userData && userData.parsedData?.entityInfo?.LinkedId_ASE) {
+      return userData.parsedData.entityInfo.LinkedId_ASE;
+    }
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting Steam64 from Discord ID:', error);
+    throw error;
+  }
+}
+
+// แทนที่ getCharacterIdFromSteam64 ทั้งหมด
+async getCharacterIdFromSteam64(steam64) {
+  try {
+    const playerData = await this.getPlayerData(steam64);
+    if (playerData && playerData.parsedData?.entityInfo?.MostRecentCharacterId) {
+      return playerData.parsedData.entityInfo.MostRecentCharacterId;
+    }
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting Character ID from Steam64:', error);
+    throw error;
+  }
+}
+
+  async getUserGameInfo(discordId) {
+    try {
+      const steam64 = await this.getSteam64FromDiscord(discordId);
+      if (!steam64) {
+        return {
+          isLinked: false,
+          steam64: null,
+          characterId: null,
+          userData: null,
+          playerData: null
+        };
+      }
+
+      const characterId = await this.getCharacterIdFromSteam64(steam64);
+      const userData = await this.getDiscordUserData(discordId);
+      const playerData = await this.getPlayerData(steam64);
+
+      return {
+        isLinked: true,
+        steam64: steam64,
+        characterId: characterId,
+        userData: userData,
+        playerData: playerData
+      };
+    } catch (error) {
+      console.error('❌ Error getting user game info:', error);
+      throw error;
+    }
+  }
+
+  // เดิมที่มีอยู่แล้ว
   async createTables() {
     const createTopupLogsTable = `
       CREATE TABLE IF NOT EXISTS topup_logs (
         id INT AUTO_INCREMENT PRIMARY KEY,
         discord_id VARCHAR(20) NOT NULL,
         discord_username VARCHAR(100) NOT NULL,
-        steam64 VARCHAR(20) NOT NULL,
-        package_id VARCHAR(50) NOT NULL,
-        package_name VARCHAR(100) NOT NULL,
+        steam64 VARCHAR(20),
+        character_id VARCHAR(20),
+        category VARCHAR(20) NOT NULL,
+        item_id VARCHAR(50) NOT NULL,
+        item_name VARCHAR(100) NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
         slip_image_url TEXT,
         verification_data JSON,
@@ -107,7 +217,8 @@ class DatabaseService {
         INDEX idx_discord_id (discord_id),
         INDEX idx_status (status),
         INDEX idx_created_at (created_at),
-        INDEX idx_ticket_id (ticket_id)
+        INDEX idx_ticket_id (ticket_id),
+        INDEX idx_category (category)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
 
@@ -129,12 +240,14 @@ class DatabaseService {
         discord_id VARCHAR(20) NOT NULL,
         channel_id VARCHAR(20) NOT NULL,
         ticket_id VARCHAR(20) NOT NULL,
+        ticket_type ENUM('donation', 'support') DEFAULT 'donation',
         status ENUM('active', 'processing', 'completed', 'cancelled') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_discord_id (discord_id),
         INDEX idx_channel_id (channel_id),
-        INDEX idx_ticket_id (ticket_id)
+        INDEX idx_ticket_id (ticket_id),
+        INDEX idx_ticket_type (ticket_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `;
 
@@ -149,12 +262,12 @@ class DatabaseService {
     }
   }
 
-  async logTopupTransaction(data) {
+  async logDonationTransaction(data) {
     const query = `
       INSERT INTO topup_logs 
-      (discord_id, discord_username, steam64, package_id, package_name, amount, 
+      (discord_id, discord_username, steam64, character_id, category, item_id, item_name, amount, 
        ticket_channel_id, ticket_id, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     try {
@@ -162,8 +275,10 @@ class DatabaseService {
         data.discordId,
         data.discordUsername,
         data.steam64,
-        data.packageId,
-        data.packageName,
+        data.characterId,
+        data.category,
+        data.itemId,
+        data.itemName,
         data.amount,
         data.ticketChannelId,
         data.ticketId,
@@ -171,11 +286,12 @@ class DatabaseService {
       ]);
       return result.insertId;
     } catch (error) {
-      console.error('❌ Error logging topup transaction:', error);
+      console.error('❌ Error logging donation transaction:', error);
       throw error;
     }
   }
 
+  // เหลือ methods เดิมๆ ที่มีอยู่แล้ว...
   async updateTopupStatus(id, status, additionalData = {}) {
     const fields = ['status = ?'];
     const values = [status];
@@ -275,14 +391,14 @@ class DatabaseService {
     }
   }
 
-  async createActiveTicket(discordId, channelId, ticketId) {
+  async createActiveTicket(discordId, channelId, ticketId, ticketType = 'donation') {
     const query = `
-      INSERT INTO active_tickets (discord_id, channel_id, ticket_id)
-      VALUES (?, ?, ?)
+      INSERT INTO active_tickets (discord_id, channel_id, ticket_id, ticket_type)
+      VALUES (?, ?, ?, ?)
     `;
     
     try {
-      const result = await this.executeQuery(query, [discordId, channelId, ticketId]);
+      const result = await this.executeQuery(query, [discordId, channelId, ticketId, ticketType]);
       return result.insertId;
     } catch (error) {
       console.error('❌ Error creating active ticket:', error);
@@ -312,6 +428,40 @@ class DatabaseService {
       throw error;
     }
   }
+
+  // เพิ่ม method นี้
+async getActiveSupportTickets(discordId) {
+  const query = `
+    SELECT * FROM active_tickets 
+    WHERE discord_id = ? AND status = 'active' AND ticket_type = 'support'
+    ORDER BY created_at DESC
+  `;
+  
+  try {
+    const rows = await this.executeQuery(query, [discordId]);
+    return rows;
+  } catch (error) {
+    console.error('❌ Error getting active support tickets:', error);
+    throw error;
+  }
+}
+
+// เพิ่ม method นี้ด้วย
+async getActiveDonationTickets(discordId) {
+  const query = `
+    SELECT * FROM active_tickets 
+    WHERE discord_id = ? AND status = 'active' AND ticket_type = 'donation'
+    ORDER BY created_at DESC
+  `;
+  
+  try {
+    const rows = await this.executeQuery(query, [discordId]);
+    return rows;
+  } catch (error) {
+    console.error('❌ Error getting active donation tickets:', error);
+    throw error;
+  }
+}
 
   // เพิ่มเมธอดสำหรับตรวจสอบสถานะ connection
   async healthCheck() {
