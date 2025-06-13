@@ -1,0 +1,34 @@
+{
+  "packages": [
+    {
+      "id": "package1",
+      "name": "Package Basic",
+      "price": 5,
+      "description": "Basic package with starter items",
+      "rcon_commands": [
+        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'\" 100 0 0",
+        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'\" 100 0 0",
+        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'\" 100 0 0"
+      ]
+    },
+    {
+      "id": "package2", 
+      "name": "Package Premium",
+      "price": 5,
+      "description": "Premium package with advanced items",
+      "rcon_commands": [
+        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotChest.PrimalItemArmor_RiotChest'\" 1 0 0",
+        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotPants.PrimalItemArmor_RiotPants'\" 1 0 0"
+      ]
+    }
+  ],
+  "qr_code": {
+    "payment_info": {
+      "bank_name": "ธนาคารกสิกรไทย",
+      "bank_code": "KBank",
+      "account_number": "0678195405",
+      "account_name": "นาย ประธาน นิลสนธิ์",
+      "strict_validation": true
+    }
+  }
+}
