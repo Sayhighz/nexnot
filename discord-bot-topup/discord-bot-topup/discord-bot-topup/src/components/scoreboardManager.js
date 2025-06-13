@@ -1,279 +1,783 @@
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import databaseService from '../services/databaseService.js';
+// src/components/rconManager.js
+import { Rcon } from 'rcon-client';
+import configService from '../services/configService.js';
 import logService from '../services/logService.js';
-import CONSTANTS from '../utils/constants.js';
-import cron from 'node-cron';
+import Helpers from '../utils/helpers.js';
 
-class ScoreboardManager {
-  constructor(client) {
-    this.client = client;
-    this.lastUpdate = null;
-    this.cachedScoreboard = null;
-  }
-
-  init() {
-    console.log('🏆 Scoreboard Manager initialized');
+class RconManager {
+  constructor() {
+    this.config = null;
+    this.isEnabled = false;
+    this.consecutiveFailures = 0;
+    this.connectionTimeout = 8000;
+    this.commandTimeout = 10000;
+    this.activeConnections = new Set();
+    this.maxRetries = 3;
+    this.maxFailures = 5;
     
-    // Update scoreboard every hour
-    cron.schedule('0 * * * *', async () => {
-      await this.updateCachedScoreboard();
-    });
-
-    // Initial update
-    this.updateCachedScoreboard();
+    this.initializeConfig();
   }
 
-  async updateCachedScoreboard() {
+  initializeConfig() {
     try {
-      const scores = await databaseService.getTribeScores();
-      this.cachedScoreboard = this.formatScoreboard(scores);
-      this.lastUpdate = new Date();
+      this.config = configService.getRconConfig();
+      this.isEnabled = this.config.enabled && 
+                       this.config.host && 
+                       this.config.password && 
+                       this.config.host !== 'localhost';
       
-      console.log('✅ Scoreboard cache updated');
-      logService.info('Scoreboard updated', { tribes: scores.length });
-    } catch (error) {
-      console.error('❌ Error updating scoreboard:', error);
-      logService.error('Scoreboard update failed', error);
-    }
-  }
-
-  formatScoreboard(scores) {
-    if (!scores || scores.length === 0) {
-      return {
-        description: 'ไม่มีข้อมูล Tribe Score',
-        fields: []
-      };
-    }
-
-    const chunks = this.chunkArray(scores, 10); // 10 tribes per page
-    const pages = [];
-
-    chunks.forEach((chunk, pageIndex) => {
-      const fields = chunk.map((tribe, index) => {
-        const globalRank = pageIndex * 10 + index + 1;
-        const modeEmoji = this.getModeEmoji(tribe.mode);
-        const progressText = tribe.progress > 0 ? `(+${tribe.progress})` : 
-                           tribe.progress < 0 ? `(${tribe.progress})` : '';
-
-        return {
-          name: `${this.getRankEmoji(globalRank)} #${globalRank} ${tribe.tribeName}`,
-          value: `**Score:** ${tribe.score.toLocaleString()} ${progressText}\n**Mode:** ${modeEmoji} ${tribe.mode}`,
-          inline: true
-        };
-      });
-
-      pages.push({
-        description: `📊 **Tribe Scoreboard** - หน้า ${pageIndex + 1}/${chunks.length}`,
-        fields: fields
-      });
-    });
-
-    return pages.length > 0 ? pages : [{
-      description: 'ไม่มีข้อมูล Tribe Score',
-      fields: []
-    }];
-  }
-
-  chunkArray(array, size) {
-    const chunks = [];
-    for (let i = 0; i < array.length; i += size) {
-      chunks.push(array.slice(i, i + size));
-    }
-    return chunks;
-  }
-
-  getRankEmoji(rank) {
-    switch (rank) {
-      case 1: return '🥇';
-      case 2: return '🥈';
-      case 3: return '🥉';
-      default: return '🏅';
-    }
-  }
-
-  getModeEmoji(mode) {
-    switch (mode) {
-      case 'PROMOTE': return '📈';
-      case 'DEMOTE': return '📉';
-      case 'KEEP': return '➡️';
-      default: return '❓';
-    }
-  }
-
-  async showScoreboard(interaction, page = 0) {
-    try {
-      // Check if cache needs update (older than 1 hour)
-      const oneHourAgo = new Date(Date.now() - 3600000);
-      if (!this.lastUpdate || this.lastUpdate < oneHourAgo) {
-        await this.updateCachedScoreboard();
-      }
-
-      if (!this.cachedScoreboard || this.cachedScoreboard.length === 0) {
-        const noDataEmbed = new EmbedBuilder()
-          .setColor(CONSTANTS.COLORS.WARNING)
-          .setTitle('🏆 Tribe Scoreboard')
-          .setDescription('ไม่มีข้อมูล Tribe Score ในขณะนี้')
-          .setTimestamp();
-
-        return await interaction.reply({
-          embeds: [noDataEmbed],
-          ephemeral: true
+      if (!this.isEnabled) {
+        console.warn('⚠️ RCON is disabled - check configuration in config.json');
+        console.warn('⚠️ Please configure RCON settings: enabled, host, port, and password');
+      } else {
+        console.log('✅ RCON configured:', { 
+          host: this.config.host, 
+          port: this.config.port || 27015,
+          hasPassword: !!this.config.password,
+          enabled: this.config.enabled
         });
       }
-
-      const totalPages = this.cachedScoreboard.length;
-      const currentPage = Math.max(0, Math.min(page, totalPages - 1));
-      const pageData = this.cachedScoreboard[currentPage];
-
-      const embed = new EmbedBuilder()
-        .setColor(CONSTANTS.COLORS.INFO)
-        .setTitle('🏆 Tribe Scoreboard')
-        .setDescription(pageData.description)
-        .addFields(pageData.fields)
-        .setFooter({ 
-          text: `อัพเดทล่าสุด: ${this.lastUpdate?.toLocaleString('th-TH')} | หน้า ${currentPage + 1}/${totalPages}` 
-        })
-        .setTimestamp();
-
-      // Navigation buttons
-      const buttons = new ActionRowBuilder();
-
-      if (totalPages > 1) {
-        buttons.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`scoreboard_first`)
-            .setLabel('⏮️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === 0),
-          
-          new ButtonBuilder()
-            .setCustomId(`scoreboard_prev`)
-            .setLabel('◀️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === 0),
-          
-          new ButtonBuilder()
-            .setCustomId(`scoreboard_next`)
-            .setLabel('▶️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === totalPages - 1),
-          
-          new ButtonBuilder()
-            .setCustomId(`scoreboard_last`)
-            .setLabel('⏭️')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(currentPage === totalPages - 1)
-        );
-      }
-
-      buttons.addComponents(
-        new ButtonBuilder()
-          .setCustomId('scoreboard_refresh')
-          .setLabel('🔄 รีเฟรช')
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      const messageOptions = {
-        embeds: [embed],
-        components: buttons.components.length > 0 ? [buttons] : []
-      };
-
-      if (interaction.replied || interaction.deferred) {
-        await interaction.editReply(messageOptions);
-      } else {
-        await interaction.reply({
-          ...messageOptions,
-          ephemeral: true
-        });
-      }
-
     } catch (error) {
-      console.error('❌ Error showing scoreboard:', error);
-      logService.error('Scoreboard display error', error);
-
-      const errorEmbed = new EmbedBuilder()
-        .setColor(CONSTANTS.COLORS.ERROR)
-        .setTitle('❌ เกิดข้อผิดพลาด')
-        .setDescription('ไม่สามารถแสดง Scoreboard ได้ในขณะนี้')
-        .setTimestamp();
-
-      const errorMessage = { embeds: [errorEmbed], ephemeral: true };
-
-      if (interaction.replied || interaction.deferred) {
-        await interaction.editReply(errorMessage);
-      } else {
-        await interaction.reply(errorMessage);
-      }
+      console.error('❌ Error initializing RCON config:', error);
+      this.isEnabled = false;
     }
   }
 
-  async handleScoreboardNavigation(interaction) {
-    const { customId } = interaction;
-    
-    // Extract current page from embed footer or default to 0
-    let currentPage = 0;
-    if (interaction.message.embeds[0]?.footer?.text) {
-      const match = interaction.message.embeds[0].footer.text.match(/หน้า (\d+)\/(\d+)/);
-      if (match) {
-        currentPage = parseInt(match[1]) - 1;
-      }
+  async executeCommand(command) {
+    if (!this.isEnabled) {
+      console.error('❌ RCON is not enabled. Please configure RCON settings in config.json');
+      return {
+        success: false,
+        error: 'RCON is not enabled',
+        response: null,
+        details: {
+          enabled: this.config?.enabled || false,
+          hasHost: !!(this.config?.host),
+          hasPassword: !!(this.config?.password)
+        }
+      };
     }
 
-    let newPage = currentPage;
-
-    switch (customId) {
-      case 'scoreboard_first':
-        newPage = 0;
-        break;
-      case 'scoreboard_prev':
-        newPage = Math.max(0, currentPage - 1);
-        break;
-      case 'scoreboard_next':
-        newPage = currentPage + 1;
-        break;
-      case 'scoreboard_last':
-        newPage = this.cachedScoreboard ? this.cachedScoreboard.length - 1 : 0;
-        break;
-      case 'scoreboard_refresh':
-        await this.updateCachedScoreboard();
-        newPage = currentPage;
-        break;
+    // Check if too many consecutive failures
+    if (this.consecutiveFailures >= this.maxFailures) {
+      console.error(`❌ Too many RCON failures (${this.consecutiveFailures}). Please check server connection`);
+      return {
+        success: false,
+        error: `Too many consecutive failures (${this.consecutiveFailures}/${this.maxFailures})`,
+        response: null,
+        canRetry: false
+      };
     }
 
-    await interaction.deferUpdate();
-    await this.showScoreboard(interaction, newPage);
-  }
+    // Validate command
+    if (!command || typeof command !== 'string' || command.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Invalid command provided',
+        response: null
+      };
+    }
 
-  async getTribeRank(tribeName) {
     try {
-      const scores = await databaseService.getTribeScores();
-      const tribe = scores.find(t => t.tribeName.toLowerCase() === tribeName.toLowerCase());
+      console.log(`🎮 Executing RCON command: ${command.substring(0, 100)}${command.length > 100 ? '...' : ''}`);
+      return await this.executeCommandInternal(command.trim());
+    } catch (error) {
+      console.error('❌ RCON command failed:', error.message);
+      this.consecutiveFailures++;
       
-      if (!tribe) {
-        return null;
-      }
+      return {
+        success: false,
+        error: error.message,
+        response: null,
+        consecutiveFailures: this.consecutiveFailures
+      };
+    }
+  }
+
+  async executeCommandInternal(command) {
+    let rcon = null;
+    const connectionId = Date.now() + Math.random();
+    const startTime = Date.now();
+    
+    try {
+      console.log(`🔗 [${connectionId}] Connecting to RCON...`);
+      console.log(`🎯 [${connectionId}] Target: ${this.config.host}:${this.config.port || 27015}`);
+      
+      // Create RCON client
+      rcon = new Rcon({
+        host: this.config.host,
+        port: this.config.port || 27015,
+        password: this.config.password,
+        timeout: this.connectionTimeout
+      });
+      
+      // Track this connection
+      this.activeConnections.add(connectionId);
+      
+      // Connect with timeout
+      console.log(`⏱️ [${connectionId}] Connecting with ${this.connectionTimeout}ms timeout...`);
+      await Promise.race([
+        rcon.connect(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Connection timeout')), this.connectionTimeout)
+        )
+      ]);
+      
+      console.log(`🔗 [${connectionId}] RCON connected successfully`);
+
+      // Execute command with timeout
+      console.log(`📤 [${connectionId}] Executing command: ${command}`);
+      const commandStartTime = Date.now();
+      
+      const response = await Promise.race([
+        rcon.send(command),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Command execution timeout')), this.commandTimeout)
+        )
+      ]);
+      
+      const commandDuration = Date.now() - commandStartTime;
+      console.log(`✅ [${connectionId}] Command executed successfully in ${commandDuration}ms`);
+      
+      // Process response
+      const responseText = this.extractResponseText(response);
+      console.log(`📨 [${connectionId}] Response:`, responseText);
+
+      // Reset failure counter on success
+      this.consecutiveFailures = 0;
+
+      const totalDuration = Date.now() - startTime;
+
+      // Log successful command
+      logService.logRconCommand(command, 'success', {
+        response: responseText,
+        host: this.config.host,
+        port: this.config.port || 27015,
+        connectionId: connectionId,
+        duration: totalDuration,
+        commandDuration: commandDuration
+      });
 
       return {
-        rank: tribe.position,
-        score: tribe.score,
-        progress: tribe.progress,
-        mode: tribe.mode
+        success: true,
+        error: null,
+        response: responseText,
+        duration: totalDuration,
+        connectionId: connectionId
       };
+
     } catch (error) {
-      console.error('❌ Error getting tribe rank:', error);
-      return null;
+      const duration = Date.now() - startTime;
+      console.error(`❌ [${connectionId}] RCON Error after ${duration}ms:`, error.message);
+      this.consecutiveFailures++;
+
+      // Categorize error for better user feedback
+      const errorCategory = this.categorizeError(error);
+
+      // Log failed command
+      logService.logRconCommand(command, 'failed', {
+        error: error.message,
+        errorCategory: errorCategory,
+        host: this.config.host,
+        port: this.config.port || 27015,
+        connectionId: connectionId,
+        duration: duration,
+        consecutiveFailures: this.consecutiveFailures
+      });
+
+      return {
+        success: false,
+        error: this.getReadableErrorMessage(error, errorCategory),
+        response: null,
+        errorCategory: errorCategory,
+        duration: duration,
+        consecutiveFailures: this.consecutiveFailures
+      };
+
+    } finally {
+      // Clean up connection
+      if (rcon) {
+        console.log(`🔌 [${connectionId}] Cleaning up connection...`);
+        await this.forceCloseConnection(rcon, connectionId);
+      }
+      
+      // Remove from active connections
+      this.activeConnections.delete(connectionId);
+      const totalDuration = Date.now() - startTime;
+      console.log(`🗑️ [${connectionId}] Connection cleanup complete after ${totalDuration}ms`);
     }
   }
 
-  async getTopTribes(limit = 10) {
+  categorizeError(error) {
+    const message = error.message.toLowerCase();
+    
+    if (message.includes('timeout') || message.includes('etimedout')) {
+      return 'timeout';
+    } else if (message.includes('econnrefused') || message.includes('enotfound')) {
+      return 'connection';
+    } else if (message.includes('authentication') || message.includes('invalid password')) {
+      return 'authentication';
+    } else if (message.includes('permission') || message.includes('access denied')) {
+      return 'permission';
+    } else {
+      return 'unknown';
+    }
+  }
+
+  getReadableErrorMessage(error, category) {
+    const baseMessage = error.message;
+    
+    switch (category) {
+      case 'timeout':
+        return 'การเชื่อมต่อ RCON หมดเวลา เซิร์ฟเวอร์อาจไม่ตอบสนอง';
+      case 'connection':
+        return 'ไม่สามารถเชื่อมต่อ RCON ได้ กรุณาตรวจสอบ IP และ Port';
+      case 'authentication':
+        return 'รหัสผ่าน RCON ไม่ถูกต้อง';
+      case 'permission':
+        return 'ไม่มีสิทธิ์ในการใช้คำสั่งนี้';
+      default:
+        return `เกิดข้อผิดพลาด RCON: ${baseMessage}`;
+    }
+  }
+
+  async forceCloseConnection(rcon, connectionId) {
+    const closeTimeout = 3000; // 3 seconds max for closing
+    
     try {
-      const scores = await databaseService.getTribeScores();
-      return scores.slice(0, limit);
+      await Promise.race([
+        this.closeRconConnection(rcon, connectionId),
+        new Promise((resolve) => 
+          setTimeout(() => {
+            console.warn(`⏰ [${connectionId}] Force closing connection after timeout`);
+            resolve();
+          }, closeTimeout)
+        )
+      ]);
     } catch (error) {
-      console.error('❌ Error getting top tribes:', error);
+      console.warn(`⚠️ [${connectionId}] Error during force close:`, error.message);
+    }
+  }
+
+  async closeRconConnection(rcon, connectionId) {
+    try {
+      if (typeof rcon.end === 'function') {
+        await rcon.end();
+        console.log(`🔌 [${connectionId}] Connection ended successfully`);
+      } else if (typeof rcon.disconnect === 'function') {
+        await rcon.disconnect();
+        console.log(`🔌 [${connectionId}] Connection disconnected successfully`);
+      } else if (typeof rcon.close === 'function') {
+        await rcon.close();
+        console.log(`🔌 [${connectionId}] Connection closed successfully`);
+      } else {
+        console.warn(`⚠️ [${connectionId}] No close method available`);
+      }
+    } catch (closeError) {
+      console.warn(`⚠️ [${connectionId}] Close error:`, closeError.message);
+      
+      // Force destroy if normal close fails
+      try {
+        if (rcon.socket && typeof rcon.socket.destroy === 'function') {
+          rcon.socket.destroy();
+          console.log(`💥 [${connectionId}] Socket destroyed forcefully`);
+        }
+      } catch (destroyError) {
+        console.warn(`⚠️ [${connectionId}] Destroy error:`, destroyError.message);
+      }
+    }
+  }
+
+  extractResponseText(response) {
+    if (typeof response === 'string') {
+      return response.trim();
+    }
+    
+    if (response && typeof response === 'object') {
+      if (response.body) return response.body.trim();
+      if (response.response) return response.response.trim();
+      if (response.data) return response.data.trim();
+      if (response.message) return response.message.trim();
+      
+      // Try to stringify object response
+      try {
+        return JSON.stringify(response, null, 2);
+      } catch {
+        return 'Object response (could not stringify)';
+      }
+    }
+    
+    return 'Command executed successfully';
+  }
+
+  // High-level game commands with proper error handling
+  async giveItem(steam64, itemPath, quantity = 1, quality = 0, blueprintType = 0) {
+    if (!this.validateSteam64(steam64)) {
+      return {
+        success: false,
+        error: 'Invalid Steam64 ID format',
+        response: null
+      };
+    }
+
+    if (!itemPath || typeof itemPath !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid item path provided',
+        response: null
+      };
+    }
+
+    const itemName = this.extractItemName(itemPath);
+    console.log(`🎁 Attempting to give item to ${steam64}: ${itemName} x${quantity}`);
+    
+    const command = `giveitem ${steam64} "${itemPath}" ${quantity} ${quality} ${blueprintType}`;
+    const result = await this.executeCommand(command);
+    
+    if (result.success) {
+      console.log(`✅ Successfully gave ${quantity}x ${itemName} to ${steam64}`);
+    } else {
+      console.error(`❌ Failed to give item to ${steam64}:`, result.error);
+    }
+    
+    return {
+      ...result,
+      itemName: itemName,
+      steam64: steam64,
+      quantity: quantity
+    };
+  }
+
+  async giveItemToPlayer(steam64, itemPath, quantity = 1, quality = 0, blueprintType = 0) {
+    if (!this.validateSteam64(steam64)) {
+      return {
+        success: false,
+        error: 'Invalid Steam64 ID format',
+        response: null
+      };
+    }
+
+    if (!itemPath || typeof itemPath !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid item path provided',
+        response: null
+      };
+    }
+
+    const itemName = this.extractItemName(itemPath);
+    console.log(`🎁 Attempting to give item to player ${steam64}: ${itemName} x${quantity}`);
+    
+    const command = `GiveItemToPlayer ${steam64} "${itemPath}" ${quantity} ${quality} ${blueprintType}`;
+    const result = await this.executeCommand(command);
+    
+    if (result.success) {
+      console.log(`✅ Successfully gave ${quantity}x ${itemName} to player ${steam64}`);
+    } else {
+      console.error(`❌ Failed to give item to player ${steam64}:`, result.error);
+    }
+    
+    return {
+      ...result,
+      itemName: itemName,
+      steam64: steam64,
+      quantity: quantity
+    };
+  }
+
+  async addExperience(steam64, amount) {
+    if (!this.validateSteam64(steam64)) {
+      return {
+        success: false,
+        error: 'Invalid Steam64 ID format',
+        response: null
+      };
+    }
+
+    if (!amount || amount <= 0) {
+      return {
+        success: false,
+        error: 'Invalid experience amount',
+        response: null
+      };
+    }
+
+    console.log(`📈 Adding ${amount} XP to ${steam64}`);
+    
+    const command = `addexperience ${steam64} ${amount}`;
+    const result = await this.executeCommand(command);
+    
+    return {
+      ...result,
+      steam64: steam64,
+      amount: amount
+    };
+  }
+
+  async givePoints(steam64, amount) {
+    if (!this.validateSteam64(steam64)) {
+      return {
+        success: false,
+        error: 'Invalid Steam64 ID format',
+        response: null
+      };
+    }
+
+    if (!amount || amount <= 0) {
+      return {
+        success: false,
+        error: 'Invalid points amount',
+        response: null
+      };
+    }
+
+    console.log(`💰 Adding ${amount} points to ${steam64}`);
+    
+    const command = `givepoints ${steam64} ${amount}`;
+    const result = await this.executeCommand(command);
+    
+    return {
+      ...result,
+      steam64: steam64,
+      amount: amount
+    };
+  }
+
+  async addHexagons(steam64, amount) {
+    if (!this.validateSteam64(steam64)) {
+      return {
+        success: false,
+        error: 'Invalid Steam64 ID format',
+        response: null
+      };
+    }
+
+    if (!amount || amount <= 0) {
+      return {
+        success: false,
+        error: 'Invalid hexagon amount',
+        response: null
+      };
+    }
+
+    console.log(`🔷 Adding ${amount} hexagons to ${steam64}`);
+    
+    const command = `addhexagons ${steam64} ${amount}`;
+    const result = await this.executeCommand(command);
+    
+    return {
+      ...result,
+      steam64: steam64,
+      amount: amount
+    };
+  }
+
+  async broadcastMessage(message) {
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Invalid message provided',
+        response: null
+      };
+    }
+
+    console.log(`📢 Broadcasting message: ${message}`);
+    
+    const command = `broadcast ${message}`;
+    const result = await this.executeCommand(command);
+    
+    return {
+      ...result,
+      message: message
+    };
+  }
+
+  async serverMessage(message) {
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Invalid message provided',
+        response: null
+      };
+    }
+
+    console.log(`📢 Sending server message: ${message}`);
+    
+    const command = `servermessage ${message}`;
+    const result = await this.executeCommand(command);
+    
+    return {
+      ...result,
+      message: message
+    };
+  }
+
+  async getOnlinePlayers() {
+    console.log('👥 Getting online players list');
+    const command = 'listplayers';
+    const result = await this.executeCommand(command);
+    
+    if (result.success && result.response) {
+      // Parse player list from response
+      result.players = this.parsePlayerList(result.response);
+    }
+    
+    return result;
+  }
+
+  async getServerInfo() {
+    console.log('ℹ️ Getting server information');
+    const command = 'getgamelog';
+    const result = await this.executeCommand(command);
+    
+    return result;
+  }
+
+  async saveWorld() {
+    console.log('💾 Saving world');
+    const command = 'saveworld';
+    const result = await this.executeCommand(command);
+    
+    return result;
+  }
+
+  async destroyWildDinos() {
+    console.log('🦕 Destroying wild dinosaurs');
+    const command = 'destroywilddinos';
+    const result = await this.executeCommand(command);
+    
+    return result;
+  }
+
+  // Utility methods
+  validateSteam64(steam64) {
+    if (!steam64) return false;
+    
+    // Steam64 ID should be 17 digits and start with 7656119
+    const steam64Pattern = /^7656119\d{10}$/;
+    return steam64Pattern.test(steam64.toString());
+  }
+
+  parsePlayerList(response) {
+    try {
+      const lines = response.split('\n');
+      const players = [];
+      
+      for (const line of lines) {
+        // Parse player information from response
+        // Format might vary depending on server
+        if (line.includes('Steam64') || line.includes('ID:')) {
+          // Extract player data here
+          players.push(line.trim());
+        }
+      }
+      
+      return players;
+    } catch (error) {
+      console.error('Error parsing player list:', error);
       return [];
+    }
+  }
+
+  extractItemName(itemPath) {
+    if (!itemPath) return 'Unknown Item';
+    
+    const pathParts = itemPath.split('/');
+    const lastPart = pathParts[pathParts.length - 1];
+    
+    let itemName = lastPart;
+    
+    // Remove common prefixes
+    const cleanupPatterns = [
+      'PrimalItemArmor_',
+      'PrimalItemResource_',
+      'PrimalItemWeapon_',
+      'PrimalItemConsumable_',
+      'PrimalItemStructure_',
+      'PrimalItem_'
+    ];
+    
+    cleanupPatterns.forEach(pattern => {
+      if (itemName.includes(pattern)) {
+        itemName = itemName.replace(pattern, '');
+      }
+    });
+    
+    // Remove quotes and clean up
+    itemName = itemName.replace(/['"]/g, '');
+    
+    // Add spaces before capital letters
+    itemName = itemName.replace(/([A-Z])/g, ' $1').trim();
+    
+    return itemName || 'Unknown Item';
+  }
+
+  // Test and monitoring methods
+  async testConnection() {
+    if (!this.isEnabled) {
+      return {
+        success: false,
+        error: 'RCON is not enabled',
+        response: null,
+        target: `${this.config?.host || 'N/A'}:${this.config?.port || 'N/A'}`,
+        configuration: this.getConfiguration()
+      };
+    }
+
+    console.log(`🧪 Testing RCON connection to ${this.config.host}:${this.config.port || 27015}`);
+    
+    try {
+      const startTime = Date.now();
+      const result = await this.executeCommand('echo "RCON Connection Test"');
+      const duration = Date.now() - startTime;
+      
+      console.log(`🧪 Test result:`, result.success ? 'SUCCESS' : 'FAILED');
+      
+      return {
+        success: result.success,
+        error: result.error,
+        response: result.response,
+        target: `${this.config.host}:${this.config.port || 27015}`,
+        duration: duration,
+        configuration: this.getConfiguration()
+      };
+    } catch (error) {
+      console.error('🧪 Test failed:', error.message);
+      return {
+        success: false,
+        error: error.message,
+        target: `${this.config.host}:${this.config.port || 27015}`,
+        configuration: this.getConfiguration()
+      };
+    }
+  }
+
+  getConfiguration() {
+    return {
+      host: this.config?.host || 'not configured',
+      port: this.config?.port || 27015,
+      isEnabled: this.isEnabled,
+      hasPassword: !!(this.config?.password),
+      consecutiveFailures: this.consecutiveFailures,
+      maxFailures: this.maxFailures,
+      activeConnections: this.activeConnections.size,
+      status: this.isEnabled ? 'ENABLED' : 'DISABLED',
+      connectionString: `${this.config?.host || 'N/A'}:${this.config?.port || 'N/A'}`,
+      connectionTimeout: this.connectionTimeout,
+      commandTimeout: this.commandTimeout,
+      configLoaded: !!this.config
+    };
+  }
+
+  getStats() {
+    return {
+      isEnabled: this.isEnabled,
+      consecutiveFailures: this.consecutiveFailures,
+      maxFailures: this.maxFailures,
+      activeConnections: this.activeConnections.size,
+      connectionTimeout: this.connectionTimeout,
+      commandTimeout: this.commandTimeout,
+      uptime: process.uptime()
+    };
+  }
+
+  resetFailures() {
+    this.consecutiveFailures = 0;
+    console.log('🔄 RCON failure count reset');
+  }
+
+  updateTimeouts(connectionTimeout, commandTimeout) {
+    if (connectionTimeout && connectionTimeout > 0) {
+      this.connectionTimeout = connectionTimeout;
+      console.log(`⏰ Connection timeout updated to ${connectionTimeout}ms`);
+    }
+    
+    if (commandTimeout && commandTimeout > 0) {
+      this.commandTimeout = commandTimeout;
+      console.log(`⏰ Command timeout updated to ${commandTimeout}ms`);
+    }
+  }
+
+  debugConnection() {
+    const debug = {
+      ...this.getConfiguration(),
+      config: this.config,
+      activeConnectionIds: Array.from(this.activeConnections),
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('🔍 RCON Debug Info:', debug);
+    return debug;
+  }
+
+  async executeMultipleCommands(commands) {
+    if (!Array.isArray(commands) || commands.length === 0) {
+      return {
+        success: false,
+        error: 'No commands provided',
+        results: []
+      };
+    }
+
+    console.log(`🔄 Executing ${commands.length} commands sequentially`);
+    const results = [];
+    let allSucceeded = true;
+
+    for (let i = 0; i < commands.length; i++) {
+      const command = commands[i];
+      console.log(`📤 [${i + 1}/${commands.length}] Executing: ${command}`);
+      
+      const result = await this.executeCommand(command);
+      results.push({
+        command: command,
+        index: i,
+        ...result
+      });
+
+      if (!result.success) {
+        allSucceeded = false;
+        console.error(`❌ Command ${i + 1} failed:`, result.error);
+      }
+
+      // Small delay between commands
+      if (i < commands.length - 1) {
+        await Helpers.sleep(500);
+      }
+    }
+
+    return {
+      success: allSucceeded,
+      results: results,
+      totalCommands: commands.length,
+      successfulCommands: results.filter(r => r.success).length,
+      failedCommands: results.filter(r => !r.success).length
+    };
+  }
+
+  async shutdown() {
+    console.log('🛑 RCON Manager shutting down...');
+    console.log(`🔌 Closing ${this.activeConnections.size} active connections...`);
+    
+    // Force close any remaining connections
+    this.activeConnections.clear();
+    this.consecutiveFailures = 0;
+    
+    console.log('✅ RCON Manager shutdown complete');
+  }
+
+  // Reload configuration
+  async reloadConfig() {
+    try {
+      await configService.reloadConfig();
+      this.initializeConfig();
+      console.log('🔄 RCON configuration reloaded');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error reloading RCON config:', error);
+      return { success: false, error: error.message };
     }
   }
 }
 
-export default ScoreboardManager;
+export default new RconManager();

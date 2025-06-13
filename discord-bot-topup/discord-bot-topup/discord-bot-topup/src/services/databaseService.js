@@ -1,7 +1,5 @@
 import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import configService from './configService.js';
 
 class DatabaseService {
   constructor() {
@@ -11,17 +9,20 @@ class DatabaseService {
 
   async connect() {
     try {
+      const dbConfig = configService.getDatabaseConfig();
+      
       // สร้าง connection pool แทน single connection
       this.pool = mysql.createPool({
-        host: process.env.DATABASE_HOST,
-        user: process.env.DATABASE_USER,
-        password: process.env.DATABASE_PASSWORD,
-        database: process.env.DATABASE_NAME,
-        charset: 'utf8mb4',
-        connectionLimit: 10,
-        acquireTimeout: 60000,
-        timeout: 60000,
-        reconnect: true,
+        host: dbConfig.host,
+        user: dbConfig.user,
+        password: dbConfig.password,
+        database: dbConfig.database,
+        port: dbConfig.port || 3306,
+        charset: dbConfig.charset || 'utf8mb4',
+        connectionLimit: dbConfig.connectionLimit || 10,
+        acquireTimeout: dbConfig.acquireTimeout || 60000,
+        timeout: dbConfig.timeout || 60000,
+        reconnect: dbConfig.reconnect !== false,
         idleTimeout: 300000, // 5 minutes
         maxIdle: 5,
         enableKeepAlive: true,
@@ -42,6 +43,7 @@ class DatabaseService {
     }
   }
 
+  // ... rest of the methods remain the same
   async getConnection() {
     if (!this.pool) {
       await this.connect();
@@ -80,6 +82,7 @@ class DatabaseService {
       }
     }
   }
+
 
   async createTables() {
     const createTopupLogsTable = `

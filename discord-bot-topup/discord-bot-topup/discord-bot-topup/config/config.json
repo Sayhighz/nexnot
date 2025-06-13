@@ -1,4 +1,31 @@
 {
+  "bot": {
+    "token": "YOUR_DISCORD_BOT_TOKEN",
+    "client_id": "YOUR_BOT_CLIENT_ID"
+  },
+  "database": {
+    "host": "localhost",
+    "user": "root",
+    "password": "your_password",
+    "database": "discord_bot",
+    "port": 3306,
+    "charset": "utf8mb4",
+    "connectionLimit": 10,
+    "acquireTimeout": 60000,
+    "timeout": 60000,
+    "reconnect": true
+  },
+  "rcon": {
+    "host": "localhost",
+    "port": 27015,
+    "password": "your_rcon_password",
+    "enabled": false
+  },
+  "easyslip": {
+    "api_key": "YOUR_EASYSLIP_API_KEY",
+    "api_url": "https://developer.easyslip.com/api/v1/verify",
+    "enabled": false
+  },
   "packages": [
     {
       "id": "package1",
@@ -30,5 +57,14 @@
       "account_name": "นาย ประธาน นิลสนธิ์",
       "strict_validation": true
     }
+  },
+  "settings": {
+    "debug": false,
+    "log_level": "info",
+    "auto_cleanup": true,
+    "cleanup_interval_hours": 24,
+    "max_tickets_per_user": 3,
+    "slip_verification_timeout": 300000,
+    "ticket_cleanup_timeout": 3600000
   }
 }

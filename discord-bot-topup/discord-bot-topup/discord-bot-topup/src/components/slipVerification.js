@@ -1,9 +1,11 @@
+// src/components/slipVerification.js
 import axios from 'axios';
 import crypto from 'crypto';
 import sharp from 'sharp';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import configService from '../services/configService.js';
 import databaseService from '../services/databaseService.js';
 import logService from '../services/logService.js';
 import Helpers from '../utils/helpers.js';
@@ -13,16 +15,32 @@ const __dirname = path.dirname(__filename);
 
 class SlipVerification {
   constructor() {
-    this.apiKey = process.env.EASYSLIP_API_KEY;
-    this.apiUrl = 'https://developer.easyslip.com/api/v1/verify';
+    this.config = null;
+    this.apiKey = null;
+    this.apiUrl = null;
+    this.isEnabled = false;
     this.tempDir = path.join(__dirname, '../../temp');
-    this.enableMockMode = !this.apiKey;
-    this.initTempDirectory();
     
-    if (this.enableMockMode) {
-      console.warn('⚠️ EasySlip API key not found, running in MOCK mode');
-    } else {
-      console.log('✅ EasySlip API key configured');
+    this.initializeConfig();
+    this.initTempDirectory();
+  }
+
+  initializeConfig() {
+    try {
+      this.config = configService.getEasySlipConfig();
+      this.apiKey = this.config.api_key;
+      this.apiUrl = this.config.api_url || 'https://developer.easyslip.com/api/v1/verify';
+      this.isEnabled = this.config.enabled && !!this.apiKey;
+      
+      if (!this.isEnabled) {
+        console.warn('⚠️ EasySlip API is disabled or API key not configured');
+        console.warn('⚠️ Please enable EasySlip and configure API key in config.json');
+      } else {
+        console.log('✅ EasySlip API configured and enabled');
+      }
+    } catch (error) {
+      console.error('❌ Error initializing EasySlip config:', error);
+      this.isEnabled = false;
     }
   }
 
@@ -40,13 +58,23 @@ class SlipVerification {
         attachmentSize: attachment.size
       });
 
-      // Download image
-      const response = await axios.get(attachment.url, { 
-        responseType: 'arraybuffer',
-        timeout: 30000
-      });
-      const imageBuffer = Buffer.from(response.data);
+      // Check if service is enabled
+      if (!this.isEnabled) {
+        throw new Error('ระบบตรวจสอบสลิปไม่พร้อมใช้งาน กรุณาติดต่อแอดมิน');
+      }
 
+      // Validate input parameters
+      if (!attachment || !attachment.url) {
+        throw new Error('ไม่พบไฟล์แนบ');
+      }
+
+      if (!expectedAmount || expectedAmount <= 0) {
+        throw new Error('ราคา Package ไม่ถูกต้อง');
+      }
+
+      // Download and validate image
+      const imageBuffer = await this.downloadImage(attachment);
+      
       // Generate hash to prevent duplicate submissions
       const imageHash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
       
@@ -57,77 +85,48 @@ class SlipVerification {
       }
 
       // Process and save image temporarily
-      const tempFileName = `slip_${Date.now()}_${discordId}.jpg`;
-      const tempPath = path.join(this.tempDir, tempFileName);
-      
-      await sharp(imageBuffer)
-        .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 85 })
-        .toFile(tempPath);
+      const tempPath = await this.processImage(imageBuffer, discordId);
 
-      let verificationResult;
-
-      // ใช้ Mock mode ถ้าไม่มี API key หรือเป็นการทดสอบ
-      if (this.enableMockMode || !this.apiKey) {
-        console.log('🧪 Using mock slip verification');
-        verificationResult = await this.mockVerifySlip(expectedAmount, configBankInfo);
-      } else {
+      try {
         // Verify with EasySlip API
-        verificationResult = await this.verifyWithAPI(tempPath);
+        const verificationResult = await this.verifyWithAPI(tempPath);
+
+        console.log('📊 Verification result:', verificationResult);
+        console.log('🔢 Expected amount:', expectedAmount, 'Slip amount:', verificationResult.amount);
+
+        // Validate slip data
+        await this.validateSlipData(verificationResult, expectedAmount, configBankInfo);
+
+        // Save slip hash to prevent reuse
+        await databaseService.saveSlipHash(imageHash, discordId, verificationResult.amount || 0);
+
+        logService.logSlipVerification(discordId, 'success', {
+          hash: imageHash,
+          amount: verificationResult.amount,
+          bank: verificationResult.bank,
+          receiver: verificationResult.receiver,
+          receiverAccount: verificationResult.receiverAccount
+        });
+
+        return {
+          success: true,
+          data: verificationResult,
+          hash: imageHash
+        };
+
+      } finally {
+        // Clean up temp file
+        await fs.unlink(tempPath).catch(error => 
+          console.warn('Warning: Could not delete temp file:', error.message)
+        );
       }
-
-      console.log('📊 Verification result:', verificationResult);
-      console.log('🔢 Expected amount:', expectedAmount, 'Slip amount:', verificationResult.amount);
-
-      // ตรวจสอบว่า expectedAmount ไม่เป็น undefined
-      if (expectedAmount === undefined || expectedAmount === null) {
-        throw new Error('ไม่พบข้อมูลราคา Package กรุณาลองใหม่');
-      }
-
-      // ตรวจสอบจำนวนเงิน
-      if (!this.validateSlipAmount(verificationResult, expectedAmount)) {
-        throw new Error(`จำนวนเงินไม่ถูกต้อง: ในสลิป ${verificationResult.amount} บาท แต่ต้องจ่าย ${expectedAmount} บาท`);
-      }
-
-      // ตรวจสอบบัญชีปลายทาง
-      if (!this.validateReceiverAccount(verificationResult, configBankInfo)) {
-        throw new Error('บัญชีปลายทางไม่ถูกต้อง กรุณาตรวจสอบข้อมูลการโอนเงิน');
-      }
-
-      // ตรวจสอบความใหม่ของสลิป
-      if (!this.isSlipRecent(verificationResult, 24)) {
-        throw new Error('สลิปเก่าเกินไป กรุณาใช้สลิปที่ทำรายการภายใน 24 ชั่วโมง');
-      }
-
-      // Save slip hash to prevent reuse
-      await databaseService.saveSlipHash(imageHash, discordId, verificationResult.amount || 0);
-
-      // Clean up temp file
-      await fs.unlink(tempPath).catch(console.error);
-
-      logService.logSlipVerification(discordId, 'success', {
-        hash: imageHash,
-        amount: verificationResult.amount,
-        bank: verificationResult.bank,
-        receiver: verificationResult.receiver,
-        receiverAccount: verificationResult.receiverAccount,
-        mockMode: this.enableMockMode
-      });
-
-      return {
-        success: true,
-        data: verificationResult,
-        hash: imageHash,
-        mockMode: this.enableMockMode
-      };
 
     } catch (error) {
       logService.logSlipVerification(discordId, 'failed', {
         error: error.message,
         expectedAmount,
         configBank: configBankInfo?.bank_name,
-        configAccount: configBankInfo?.account_number,
-        mockMode: this.enableMockMode
+        configAccount: configBankInfo?.account_number
       });
 
       console.error('❌ Error processing slip:', error);
@@ -138,11 +137,75 @@ class SlipVerification {
     }
   }
 
+  async downloadImage(attachment) {
+    try {
+      console.log('📥 Downloading image from:', attachment.url);
+      
+      const response = await axios.get(attachment.url, { 
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        maxContentLength: 50 * 1024 * 1024, // 50MB limit
+        headers: {
+          'User-Agent': 'Discord Bot Slip Verification'
+        }
+      });
+
+      const imageBuffer = Buffer.from(response.data);
+      
+      // Validate file size
+      if (imageBuffer.length > 10 * 1024 * 1024) { // 10MB
+        throw new Error('ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)');
+      }
+
+      console.log('✅ Image downloaded successfully, size:', imageBuffer.length, 'bytes');
+      return imageBuffer;
+
+    } catch (error) {
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new Error('การดาวน์โหลดไฟล์ใช้เวลานานเกินไป กรุณาลองใหม่');
+      }
+      
+      if (error.message.includes('Network Error')) {
+        throw new Error('ไม่สามารถดาวน์โหลดไฟล์ได้ กรุณาตรวจสอบการเชื่อมต่อ');
+      }
+
+      throw new Error('ไม่สามารถดาวน์โหลดรูปภาพได้: ' + error.message);
+    }
+  }
+
+  async processImage(imageBuffer, discordId) {
+    try {
+      const tempFileName = `slip_${Date.now()}_${discordId}.jpg`;
+      const tempPath = path.join(this.tempDir, tempFileName);
+      
+      console.log('🖼️ Processing image:', tempFileName);
+
+      // Process image with sharp
+      await sharp(imageBuffer)
+        .resize(1500, 1500, { 
+          fit: 'inside', 
+          withoutEnlargement: true 
+        })
+        .jpeg({ 
+          quality: 90,
+          progressive: true,
+          mozjpeg: true
+        })
+        .toFile(tempPath);
+
+      console.log('✅ Image processed and saved to:', tempPath);
+      return tempPath;
+
+    } catch (error) {
+      console.error('❌ Error processing image:', error);
+      throw new Error('ไม่สามารถประมวลผลรูปภาพได้ กรุณาตรวจสอบว่าเป็นไฟล์รูปภาพที่ถูกต้อง');
+    }
+  }
+
   async verifyWithAPI(imagePath) {
     try {
-      // ตรวจสอบว่ามี API key หรือไม่
       if (!this.apiKey) {
-        throw new Error('EasySlip API key not configured');
+        throw new Error('EasySlip API key ไม่ได้ตั้งค่าไว้');
       }
 
       const imageBuffer = await fs.readFile(imagePath);
@@ -151,7 +214,7 @@ class SlipVerification {
       console.log('API URL:', this.apiUrl);
       console.log('Image size:', imageBuffer.length, 'bytes');
 
-      // สร้าง FormData ตาม documentation
+      // Create FormData for API request
       const FormData = (await import('form-data')).default;
       const formData = new FormData();
       formData.append('file', imageBuffer, {
@@ -164,24 +227,27 @@ class SlipVerification {
           'Authorization': `Bearer ${this.apiKey}`,
           ...formData.getHeaders()
         },
-        timeout: 30000
+        timeout: 45000, // 45 seconds timeout
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
       });
 
       console.log('✅ EasySlip API Response:', response.status);
       console.log('Response data:', JSON.stringify(response.data, null, 2));
 
-      // แก้ไขการตรวจสอบ response format
+      // Parse and validate API response
       if (response.data && response.data.status === 200 && response.data.data) {
         return this.normalizeSlipData(response.data.data);
       } else if (response.data && response.data.status !== 200) {
-        throw new Error(response.data.message || `API Error: ${response.data.status}`);
+        const errorMessage = response.data.message || `API Error: ${response.data.status}`;
+        throw new Error(this.getReadableErrorMessage(response.data.status, errorMessage));
       } else {
-        throw new Error('Invalid API response format');
+        throw new Error('รูปแบบการตอบกลับจาก API ไม่ถูกต้อง');
       }
 
     } catch (error) {
       if (error.response) {
-        // API returned an error
+        // API returned an error response
         console.error('❌ EasySlip API Error:', {
           status: error.response.status,
           statusText: error.response.statusText,
@@ -189,21 +255,16 @@ class SlipVerification {
           url: error.config?.url
         });
         
-        if (error.response.status === 404) {
-          throw new Error('API endpoint ไม่ถูกต้อง หรือ service ไม่พร้อมใช้งาน');
-        } else if (error.response.status === 401 || error.response.status === 403) {
-          throw new Error('API key ไม่ถูกต้อง กรุณาตรวจสอบการตั้งค่า');
-        } else if (error.response.status === 429) {
-          throw new Error('เรียกใช้ API บ่อยเกินไป กรุณารอสักครู่');
-        } else if (error.response.status === 422) {
-          throw new Error('รูปภาพไม่ใช่สลิปที่ถูกต้อง หรือไม่สามารถอ่านได้');
-        } else {
-          throw new Error(`API Error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`);
-        }
+        throw new Error(this.getReadableErrorMessage(error.response.status, error.response.data?.message));
+        
       } else if (error.request) {
         // Network error
         console.error('❌ Network Error:', error.message);
-        throw new Error('เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
+        throw new Error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ตรวจสอบสลิปได้ กรุณาลองใหม่อีกครั้ง');
+        
+      } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        throw new Error('การตรวจสอบสลิปใช้เวลานานเกินไป กรุณาลองใหม่');
+        
       } else {
         console.error('❌ Slip Verification Error:', error);
         throw new Error(error.message || 'เกิดข้อผิดพลาดในการตรวจสอบสลิป');
@@ -211,11 +272,27 @@ class SlipVerification {
     }
   }
 
+  getReadableErrorMessage(status, apiMessage) {
+    const errorMessages = {
+      400: 'ข้อมูลที่ส่งไปไม่ถูกต้อง',
+      401: 'การยืนยันตัวตน API ล้มเหลว กรุณาติดต่อแอดมิน',
+      403: 'ไม่มีสิทธิ์เข้าถึง API กรุณาติดต่อแอดมิน', 
+      404: 'ไม่พบ API endpoint กรุณาติดต่อแอดมิน',
+      422: 'รูปภาพไม่ใช่สลิปที่ถูกต้อง หรือไม่สามารถอ่านข้อมูลได้',
+      429: 'ใช้งาน API บ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่',
+      500: 'เซิร์ฟเวอร์ API เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
+      502: 'เซิร์ฟเวอร์ API ไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง',
+      503: 'เซิร์ฟเวอร์ API ไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง'
+    };
+
+    const defaultMessage = errorMessages[status] || `เกิดข้อผิดพลาด API (${status})`;
+    return apiMessage ? `${defaultMessage}: ${apiMessage}` : defaultMessage;
+  }
+
   normalizeSlipData(apiData) {
-    // Normalize EasySlip API response format ตาม response ที่ได้
     console.log('🔄 Normalizing slip data:', JSON.stringify(apiData, null, 2));
     
-    // แก้ไขการ parse จำนวนเงิน
+    // Parse amount from API response
     let amount = 0;
     if (apiData.amount && typeof apiData.amount === 'object') {
       amount = parseFloat(apiData.amount.amount || 0);
@@ -240,11 +317,34 @@ class SlipVerification {
       ref3: apiData.ref3 || '',
       transactionId: apiData.transRef || '',
       countryCode: apiData.countryCode || 'TH',
-      fee: apiData.fee || 0
+      fee: parseFloat(apiData.fee || 0)
     };
     
     console.log('✅ Normalized data:', normalizedData);
     return normalizedData;
+  }
+
+  async validateSlipData(slipData, expectedAmount, configBankInfo) {
+    const errors = [];
+
+    // Validate amount
+    if (!this.validateSlipAmount(slipData, expectedAmount)) {
+      errors.push(`จำนวนเงินไม่ถูกต้อง: ในสลิป ${slipData.amount} บาท แต่ต้องจ่าย ${expectedAmount} บาท`);
+    }
+
+    // Validate receiver account
+    if (!this.validateReceiverAccount(slipData, configBankInfo)) {
+      errors.push('บัญชีปลายทางไม่ถูกต้อง กรุณาตรวจสอบข้อมูลการโอนเงิน');
+    }
+
+    // Validate slip date
+    if (!this.isSlipRecent(slipData, 24)) {
+      errors.push('สลิปเก่าเกินไป กรุณาใช้สลิปที่ทำรายการภายใน 24 ชั่วโมง');
+    }
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
+    }
   }
 
   validateSlipAmount(slipData, expectedAmount) {
@@ -258,13 +358,13 @@ class SlipVerification {
     const slipAmount = parseFloat(slipData.amount);
     const expected = parseFloat(expectedAmount);
     
-    // ตรวจสอบว่าทั้งสองค่าเป็นตัวเลขที่ถูกต้อง
+    // Check if both values are valid numbers
     if (isNaN(slipAmount) || isNaN(expected)) {
       console.error('❌ Invalid amount values:', { slipAmount, expected });
       return false;
     }
     
-    // Allow 1 baht difference for rounding
+    // Allow small difference for rounding (within 1 baht)
     const difference = Math.abs(slipAmount - expected);
     const isValid = difference <= 1.0;
     
@@ -284,12 +384,6 @@ class SlipVerification {
       return true; // Skip validation if no config
     }
 
-    // ใน mock mode ให้ผ่านการตรวจสอบเสมอ
-    if (this.enableMockMode) {
-      console.log('🧪 Mock mode: Skipping account validation');
-      return true;
-    }
-
     console.log('🔍 Validating receiver account...');
     console.log('Slip data:', {
       receiverAccount: slipData.receiverAccount,
@@ -299,18 +393,17 @@ class SlipVerification {
     });
     console.log('Config:', configBankInfo);
 
-    // ตรวจสอบเลขบัญชี (ถ้ามี)
+    // Validate account number if available
     if (slipData.receiverAccount && configBankInfo.account_number) {
       const slipAccount = this.normalizeAccountNumber(slipData.receiverAccount);
       const configAccount = this.normalizeAccountNumber(configBankInfo.account_number);
 
-      // เนื่องจากสลิปอาจมี X แทนตัวเลข ให้ตรวจสอบแบบ partial match
       if (slipAccount && configAccount) {
-        // ลบ X ออกจากเลขบัญชีในสลิป
+        // Remove X characters from slip account (banks often mask account numbers)
         const slipClean = slipAccount.replace(/X/gi, '');
         const configClean = configAccount;
 
-        // ตรวจสอบว่าตัวเลขที่เหลือตรงกันหรือไม่
+        // Check if remaining digits match
         if (slipClean.length >= 4 && configClean.includes(slipClean)) {
           console.log('✅ Account number partially matches');
         } else if (configClean.length >= 4 && slipClean.includes(configClean.slice(-4))) {
@@ -327,14 +420,14 @@ class SlipVerification {
       }
     }
 
-    // ตรวจสอบชื่อบัญชี (ตรวจสอบแบบคร่าวๆ เพราะอาจมีการเขียนแตกต่างกัน)
+    // Validate account name (fuzzy matching due to possible variations)
     if (configBankInfo.account_name && slipData.receiver) {
       const configName = this.normalizeName(configBankInfo.account_name);
       const slipName = this.normalizeName(slipData.receiver);
       
       console.log('Comparing names:', { configName, slipName });
       
-      // ตรวจสอบว่าชื่อคล้ายกันหรือไม่ (อย่างน้อย 60% เหมือนกัน)
+      // Check name similarity (at least 60% match)
       const similarity = this.calculateStringSimilarity(configName, slipName);
       console.log('Name similarity:', similarity);
       
@@ -344,12 +437,12 @@ class SlipVerification {
           configName: configBankInfo.account_name,
           similarity
         });
-        // แจ้งเตือนแต่ไม่ reject เพราะชื่อในสลิปอาจไม่ครบ
+        // Warn but don't reject as slip names might be truncated
         console.warn('⚠️ Name similarity low but continuing...');
       }
     }
 
-    // ตรวจสอบธนาคาร (ถ้ามีข้อมูล)
+    // Validate bank if available
     if (configBankInfo.bank_name && (slipData.bank || slipData.receiverBank)) {
       const configBank = this.normalizeBank(configBankInfo.bank_name);
       const slipBank = this.normalizeBank(slipData.bank || slipData.receiverBank);
@@ -371,13 +464,13 @@ class SlipVerification {
 
   normalizeAccountNumber(accountNumber) {
     if (!accountNumber) return '';
-    // ลบ dash, space, และตัวอักษรที่ไม่ใช่ตัวเลข (แต่เก็บ X ไว้)
+    // Remove dashes, spaces, and non-numeric characters (but keep X for masked digits)
     return accountNumber.toString().replace(/[^0-9X]/gi, '');
   }
 
   normalizeName(name) {
     if (!name) return '';
-    // ลบ prefix/suffix เช่น นาย, นาง, น.ส., Mr., Ms., และแปลงเป็นตัวเล็ก
+    // Remove prefixes like นาย, นาง, น.ส., Mr., Ms., and convert to lowercase
     return name
       .toLowerCase()
       .replace(/^(นาย|นาง|น\.ส\.|mr\.|ms\.|mrs\.|miss)\s*/i, '')
@@ -387,10 +480,11 @@ class SlipVerification {
 
   normalizeBank(bankName) {
     if (!bankName) return '';
-    // แปลงชื่อธนาคารให้เป็นรูปแบบมาตรฐาน
+    
+    // Bank name mappings for normalization
     const bankMappings = {
       'กรุงเทพ': 'BBL',
-      'กสิกรไทย': 'KBANK',
+      'กสิกรไทย': 'KBANK', 
       'ไทยพาณิชย์': 'SCB',
       'กรุงไทย': 'KTB',
       'ทหารไทยธนชาต': 'TTB',
@@ -428,7 +522,7 @@ class SlipVerification {
   }
 
   calculateStringSimilarity(str1, str2) {
-    // ใช้ Levenshtein distance เพื่อคำนวณความคล้ายคลึง
+    // Calculate similarity using Levenshtein distance
     const maxLength = Math.max(str1.length, str2.length);
     if (maxLength === 0) return 1;
     
@@ -485,48 +579,21 @@ class SlipVerification {
     }
   }
 
-  async mockVerifySlip(amount, configBankInfo, delay = 2000) {
-    // Mock verification for testing when API is not available
-    console.log('🧪 Running mock slip verification...');
-    await Helpers.sleep(delay);
-    
-    const mockData = {
-      amount: amount,
-      date: new Date().toISOString(),
-      bank: configBankInfo?.bank_name || 'ธนาคารกรุงเทพ',
-      sender: 'นาย ทดสอบ ระบบ',
-      receiver: configBankInfo?.account_name || 'นาย ผู้รับ เงิน',
-      receiverAccount: configBankInfo?.account_number || '1234567890',
-      senderAccount: '1111111111',
-      senderBank: 'SCB',
-      receiverBank: configBankInfo?.bank_code || 'BBL',
-      ref1: 'TEST001',
-      ref2: 'MOCK',
-      ref3: '',
-      transactionId: 'MOCK' + Date.now(),
-      countryCode: 'TH',
-      fee: 0
-    };
-    
-    console.log('🧪 Mock verification result:', mockData);
-    return mockData;
-  }
-
-  // เพิ่มเมธอดเปิด/ปิด mock mode
-  setMockMode(enabled) {
-    this.enableMockMode = enabled;
-    console.log(`🧪 Mock mode ${enabled ? 'enabled' : 'disabled'}`);
-  }
-
-  // เพิ่มเมธอดทดสอบ API connection
+  // Test API connection
   async testAPIConnection() {
-    if (!this.apiKey) {
-      return { success: false, error: 'No API key configured' };
+    if (!this.isEnabled || !this.apiKey) {
+      return { 
+        success: false, 
+        error: 'EasySlip API not enabled or no API key configured' 
+      };
     }
 
     try {
-      // สร้าง test image (1x1 pixel PNG)
-      const testImageBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
+      // Create a minimal test image (1x1 pixel PNG)
+      const testImageBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 
+        'base64'
+      );
       
       const FormData = (await import('form-data')).default;
       const formData = new FormData();
@@ -546,8 +613,10 @@ class SlipVerification {
       return { 
         success: true, 
         status: response.status,
+        message: 'API connection successful',
         data: response.data 
       };
+      
     } catch (error) {
       return { 
         success: false, 
@@ -558,37 +627,29 @@ class SlipVerification {
     }
   }
 
-  // เมธอดสำหรับทดสอบการตรวจสอบบัญชี
-  async testAccountValidation(slipData, configBankInfo) {
-    console.log('🧪 Testing account validation...');
-    console.log('Slip data:', slipData);
-    console.log('Config bank info:', configBankInfo);
-    
-    const isValid = this.validateReceiverAccount(slipData, configBankInfo);
-    console.log('Validation result:', isValid);
-    
-    return isValid;
+  // Get service status
+  getServiceStatus() {
+    return {
+      enabled: this.isEnabled,
+      hasApiKey: !!this.apiKey,
+      apiUrl: this.apiUrl,
+      configLoaded: !!this.config,
+      tempDirExists: fs.access(this.tempDir).then(() => true).catch(() => false)
+    };
   }
 
-  // เมธอดสำหรับ debug ข้อมูลสลิป
-  debugSlipData(slipData) {
-    console.log('🔍 Slip Data Debug:');
-    console.log('Amount:', slipData.amount, typeof slipData.amount);
-    console.log('Date:', slipData.date);
-    console.log('Receiver:', slipData.receiver);
-    console.log('Receiver Account:', slipData.receiverAccount);
-    console.log('Receiver Bank:', slipData.receiverBank);
-    console.log('Sender:', slipData.sender);
-    console.log('Sender Account:', slipData.senderAccount);
-    console.log('Sender Bank:', slipData.senderBank);
-    console.log('Transaction ID:', slipData.transactionId);
-    console.log('Refs:', { ref1: slipData.ref1, ref2: slipData.ref2, ref3: slipData.ref3 });
-  }
-
-  // เมธอดสำหรับ validate การตั้งค่า
+  // Validate configuration
   validateConfiguration(configBankInfo) {
     const errors = [];
     
+    if (!this.isEnabled) {
+      errors.push('EasySlip API ไม่ได้เปิดใช้งาน');
+    }
+
+    if (!this.apiKey) {
+      errors.push('ไม่พบ EasySlip API key');
+    }
+
     if (!configBankInfo) {
       errors.push('ไม่พบการตั้งค่าข้อมูลธนาคาร');
       return { isValid: false, errors };
@@ -610,6 +671,42 @@ class SlipVerification {
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  // Debug slip data
+  debugSlipData(slipData) {
+    console.log('🔍 Slip Data Debug:');
+    console.log('Amount:', slipData.amount, typeof slipData.amount);
+    console.log('Date:', slipData.date);
+    console.log('Receiver:', slipData.receiver);
+    console.log('Receiver Account:', slipData.receiverAccount);
+    console.log('Receiver Bank:', slipData.receiverBank);
+    console.log('Sender:', slipData.sender);
+    console.log('Sender Account:', slipData.senderAccount);
+    console.log('Sender Bank:', slipData.senderBank);
+    console.log('Transaction ID:', slipData.transactionId);
+    console.log('Refs:', { ref1: slipData.ref1, ref2: slipData.ref2, ref3: slipData.ref3 });
+  }
+
+  // Cleanup temp files
+  async cleanupTempFiles(maxAge = 3600000) { // 1 hour
+    try {
+      const files = await fs.readdir(this.tempDir);
+      
+      for (const file of files) {
+        if (file.startsWith('slip_') && file.endsWith('.jpg')) {
+          const filePath = path.join(this.tempDir, file);
+          const stats = await fs.stat(filePath);
+          
+          if (Date.now() - stats.mtime.getTime() > maxAge) {
+            await fs.unlink(filePath);
+            console.log(`🗑️ Cleaned up temp file: ${file}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error cleaning temp files:', error);
+    }
   }
 }
 
