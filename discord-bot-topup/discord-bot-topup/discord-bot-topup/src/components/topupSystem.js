@@ -677,41 +677,85 @@ class TopupSystem {
     }
   }
 
-  async executeDonation(message, ticketData, verificationResult) {
-    try {
-      // Send executing message
-      const executingEmbed = EmbedBuilders.createExecutingDonationEmbed(ticketData);
-      const executingMessage = await message.channel.send({ embeds: [executingEmbed] });
+  // แก้ไขใน TopupSystem class method executeDonation
 
-      // Execute based on category
-      let success = false;
-      let errorMessage = null;
+async executeDonation(message, ticketData, verificationResult) {
+  try {
+    // Send executing message
+    const executingEmbed = EmbedBuilders.createExecutingDonationEmbed(ticketData);
+    const executingMessage = await message.channel.send({ embeds: [executingEmbed] });
 
-      const { category, donationItem, userGameInfo } = ticketData;
+    // ตรวจสอบสถานะผู้เล่นและเซิร์ฟเวอร์ที่ online อยู่
+    const { category, donationItem, userGameInfo } = ticketData;
+    
+    // เช็คสถานะผู้เล่นล่าสุด
+    const playerStatus = await databaseService.getPlayerOnlineStatus(userGameInfo.steam64);
+    
+    console.log('🎮 Player status check:', {
+      steam64: userGameInfo.steam64,
+      isOnline: playerStatus.isOnline,
+      serverKey: playerStatus.serverKey,
+      playerName: playerStatus.playerName
+    });
 
-      switch (category) {
-        case 'points':
-          const pointsResult = await rconManager.givePoints(userGameInfo.steam64, donationItem.points);
+    let success = false;
+    let errorMessage = null;
+    let targetServer = null;
+
+    // Execute based on category
+    switch (category) {
+      case 'points':
+        if (playerStatus.isOnline && playerStatus.serverKey) {
+          // ส่งพ้อยไปที่เซิร์ฟเวอร์ที่ผู้เล่น online อยู่
+          targetServer = playerStatus.serverKey;
+          const pointsResult = await rconManager.givePointsToServer(
+            targetServer, 
+            userGameInfo.steam64, 
+            donationItem.points
+          );
           success = pointsResult.success;
           errorMessage = pointsResult.error;
-          break;
+        } else {
+          // ถ้าผู้เล่น offline ให้ส่งไปเซิร์ฟเวอร์หลัก (หรือทุกเซิร์ฟเวอร์)
+          const servers = rconManager.getAllServers().filter(s => s.isAvailable);
+          if (servers.length > 0) {
+            targetServer = servers[0].serverKey; // เซิร์ฟเวอร์แรกที่ใช้งานได้
+            const pointsResult = await rconManager.givePointsToServer(
+              targetServer,
+              userGameInfo.steam64,
+              donationItem.points
+            );
+            success = pointsResult.success;
+            errorMessage = pointsResult.error;
+          } else {
+            errorMessage = 'ไม่มีเซิร์ฟเวอร์ที่ใช้งานได้';
+          }
+        }
+        break;
 
-        case 'ranks':
-          // Add rank logic here
-          success = true; // Placeholder
-          break;
+      case 'ranks':
+        // Add rank logic here - similar to points
+        success = true; // Placeholder
+        targetServer = playerStatus.serverKey || 'main';
+        break;
 
-        case 'items':
-          if (donationItem.items && donationItem.items.length > 0) {
+      case 'items':
+        if (donationItem.items && donationItem.items.length > 0) {
+          if (playerStatus.isOnline && playerStatus.serverKey) {
+            // ส่งไอเทมไปที่เซิร์ฟเวอร์ที่ผู้เล่น online อยู่
+            targetServer = playerStatus.serverKey;
             let allSuccess = true;
+            
             for (const item of donationItem.items) {
-              const itemResult = await rconManager.giveItem(
+              const itemResult = await rconManager.giveItemToServer(
+                targetServer,
                 userGameInfo.steam64,
                 item.path,
                 item.quantity || 1,
                 item.quality || 0,
                 item.blueprintType || 0
               );
+              
               if (!itemResult.success) {
                 allSuccess = false;
                 errorMessage = itemResult.error;
@@ -719,70 +763,138 @@ class TopupSystem {
               }
             }
             success = allSuccess;
+          } else {
+            // ผู้เล่น offline - ไม่สามารถส่งไอเทมได้
+            errorMessage = 'ผู้เล่นต้อง online ในเกมจึงจะสามารถรับไอเทมได้ กรุณาเข้าเกมแล้วติดต่อแอดมิน';
+            success = false;
           }
-          break;
+        }
+        break;
 
-        default:
-          errorMessage = 'หมวดหมู่ไม่รองรับ';
+      default:
+        errorMessage = 'หมวดหมู่ไม่รองรับ';
+    }
+
+    // Update database and send result
+    const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
+    
+    if (success) {
+      // Success - ส่ง webhook notification
+      if (topupLog) {
+        await databaseService.updateTopupStatus(topupLog.id, 'completed', {
+          rconExecuted: true
+        });
       }
 
-      // Update database and send result
-      const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
-      
-      if (success) {
-        // Success
-        if (topupLog) {
-          await databaseService.updateTopupStatus(topupLog.id, 'completed', {
-            rconExecuted: true
-          });
-        }
-
-        const successEmbed = EmbedBuilders.createDonationCompletedEmbed(ticketData, category, donationItem);
-        await executingMessage.edit({ embeds: [successEmbed] });
-
-        // Schedule channel deletion
-        await databaseService.updateTicketStatus(ticketData.ticketId, 'completed');
-        this.activeTickets.delete(message.channel.id);
-        
-        setTimeout(async () => {
-          try {
-            await message.channel.delete();
-          } catch (error) {
-            console.error('Error deleting completed ticket channel:', error);
-          }
-        }, 300000); // 5 minutes
-
-      } else {
-        // Failed
-        if (topupLog) {
-          await databaseService.updateTopupStatus(topupLog.id, 'failed', {
-            errorMessage: errorMessage,
-            rconExecuted: false
-          });
-        }
-
-        const failedEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, errorMessage);
-        await executingMessage.edit({ embeds: [failedEmbed] });
-      }
-
-      logService.logTopupEvent(success ? 'completed' : 'failed', message.author.id, {
+      // ส่งข้อมูลไป Discord webhook
+      await this.sendDonationWebhook({
+        discordId: message.author.id,
+        discordUsername: message.author.username,
+        steam64: userGameInfo.steam64,
+        characterId: userGameInfo.characterId,
+        category: category,
+        itemName: donationItem.name,
+        amount: donationItem.price,
+        server: targetServer,
+        status: 'completed',
         ticketId: ticketData.ticketId,
-        category,
-        success,
-        errorMessage
+        playerName: playerStatus.playerName,
+        points: donationItem.points,
+        items: donationItem.items,
+        timestamp: new Date().toISOString()
       });
 
-    } catch (error) {
-      logService.error('Error executing donation:', error);
+      const successEmbed = EmbedBuilders.createDonationCompletedEmbed(ticketData, category, donationItem);
       
-      try {
-        const errorEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, error.message);
-        await message.channel.send({ embeds: [errorEmbed] });
-      } catch (sendError) {
-        console.error('Failed to send error message:', sendError);
+      // เพิ่มข้อมูลเซิร์ฟเวอร์ในข้อความ
+      if (targetServer) {
+        successEmbed.addFields({
+          name: '🎮 เซิร์ฟเวอร์',
+          value: `**เซิร์ฟเวอร์:** ${targetServer}\n**สถานะผู้เล่น:** ${playerStatus.isOnline ? '🟢 Online' : '🔴 Offline'}`,
+          inline: false
+        });
       }
+      
+      await executingMessage.edit({ embeds: [successEmbed] });
+
+      // Schedule channel deletion
+      await databaseService.updateTicketStatus(ticketData.ticketId, 'completed');
+      this.activeTickets.delete(message.channel.id);
+      
+      setTimeout(async () => {
+        try {
+          await message.channel.delete();
+        } catch (error) {
+          console.error('Error deleting completed ticket channel:', error);
+        }
+      }, 300000); // 5 minutes
+
+    } else {
+      // Failed
+      if (topupLog) {
+        await databaseService.updateTopupStatus(topupLog.id, 'failed', {
+          errorMessage: errorMessage,
+          rconExecuted: false
+        });
+      }
+
+      // ส่ง webhook สำหรับ failed donation
+      await this.sendDonationWebhook({
+        discordId: message.author.id,
+        discordUsername: message.author.username,
+        steam64: userGameInfo.steam64,
+        characterId: userGameInfo.characterId,
+        category: category,
+        itemName: donationItem.name,
+        amount: donationItem.price,
+        server: targetServer || 'unknown',
+        status: 'failed',
+        ticketId: ticketData.ticketId,
+        playerName: playerStatus.playerName,
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      });
+
+      const failedEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, errorMessage);
+      await executingMessage.edit({ embeds: [failedEmbed] });
+    }
+
+    logService.logTopupEvent(success ? 'completed' : 'failed', message.author.id, {
+      ticketId: ticketData.ticketId,
+      category,
+      success,
+      errorMessage,
+      targetServer,
+      playerOnline: playerStatus.isOnline
+    });
+
+  } catch (error) {
+    logService.error('Error executing donation:', error);
+    
+    try {
+      const errorEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, error.message);
+      await message.channel.send({ embeds: [errorEmbed] });
+    } catch (sendError) {
+      console.error('Failed to send error message:', sendError);
     }
   }
+}
+
+// เพิ่ม method ใหม่สำหรับส่ง webhook
+async sendDonationWebhook(donationData) {
+  try {
+    const webhookService = (await import('../services/webhookService.js')).default;
+    const result = await webhookService.sendDonationNotification(donationData);
+    
+    if (result.success) {
+      console.log('✅ Donation webhook sent successfully');
+    } else {
+      console.warn('⚠️ Donation webhook failed:', result.error || result.reason);
+    }
+  } catch (error) {
+    console.error('❌ Error sending donation webhook:', error);
+  }
+}
 
   async cancelDonation(interaction) {
     try {

@@ -1,5 +1,5 @@
-import mysql from 'mysql2/promise';
-import configService from './configService.js';
+import mysql from "mysql2/promise";
+import configService from "./configService.js";
 
 class DatabaseService {
   constructor() {
@@ -10,7 +10,7 @@ class DatabaseService {
   async connect() {
     try {
       const dbConfig = configService.getDatabaseConfig();
-      
+
       // สร้าง connection pool แทน single connection
       this.pool = mysql.createPool({
         host: dbConfig.host,
@@ -18,7 +18,7 @@ class DatabaseService {
         password: dbConfig.password,
         database: dbConfig.database,
         port: dbConfig.port || 3306,
-        charset: dbConfig.charset || 'utf8mb4',
+        charset: dbConfig.charset || "utf8mb4",
         connectionLimit: dbConfig.connectionLimit || 10,
         acquireTimeout: dbConfig.acquireTimeout || 60000,
         timeout: dbConfig.timeout || 60000,
@@ -26,18 +26,18 @@ class DatabaseService {
         idleTimeout: 300000, // 5 minutes
         maxIdle: 5,
         enableKeepAlive: true,
-        keepAliveInitialDelay: 0
+        keepAliveInitialDelay: 0,
       });
 
       // ทดสอบ connection
       const connection = await this.pool.getConnection();
       await connection.ping();
       connection.release();
-      
+
       this.isConnected = true;
-      console.log('✅ Database pool created successfully');
+      console.log("✅ Database pool created successfully");
     } catch (error) {
-      console.error('❌ Database connection failed:', error);
+      console.error("❌ Database connection failed:", error);
       this.isConnected = false;
       throw error;
     }
@@ -47,19 +47,19 @@ class DatabaseService {
     if (!this.pool) {
       await this.connect();
     }
-    
+
     try {
       const connection = await this.pool.getConnection();
       return connection;
     } catch (error) {
-      console.error('❌ Failed to get connection from pool:', error);
-      
+      console.error("❌ Failed to get connection from pool:", error);
+
       // ลองสร้าง pool ใหม่
       try {
         await this.connect();
         return await this.pool.getConnection();
       } catch (retryError) {
-        console.error('❌ Retry connection failed:', retryError);
+        console.error("❌ Retry connection failed:", retryError);
         throw retryError;
       }
     }
@@ -67,13 +67,13 @@ class DatabaseService {
 
   async executeQuery(query, params = []) {
     let connection;
-    
+
     try {
       connection = await this.getConnection();
       const [result] = await connection.execute(query, params);
       return result;
     } catch (error) {
-      console.error('❌ Database query error:', error);
+      console.error("❌ Database query error:", error);
       throw error;
     } finally {
       if (connection) {
@@ -82,84 +82,87 @@ class DatabaseService {
     }
   }
 
-// เพิ่มฟังก์ชัน helper ที่ปลอดภัย
-// เพิ่มฟังก์ชัน helper ที่ปลอดภัย
-safeParseJSON(data) {
-  try {
-    if (typeof data === 'string') {
-      return JSON.parse(data);
-    } else if (typeof data === 'object' && data !== null) {
-      return data; // ถ้าเป็น object อยู่แล้ว
-    } else {
+  // เพิ่มฟังก์ชัน helper ที่ปลอดภัย
+  // เพิ่มฟังก์ชัน helper ที่ปลอดภัย
+  safeParseJSON(data) {
+    try {
+      if (typeof data === "string") {
+        return JSON.parse(data);
+      } else if (typeof data === "object" && data !== null) {
+        return data; // ถ้าเป็น object อยู่แล้ว
+      } else {
+        return {}; // fallback
+      }
+    } catch (error) {
+      console.warn("⚠️ Failed to parse JSON data:", error);
       return {}; // fallback
     }
-  } catch (error) {
-    console.warn('⚠️ Failed to parse JSON data:', error);
-    return {}; // fallback
   }
-}
 
-// แทนที่ getDiscordUserData ทั้งหมด
-async getDiscordUserData(discordId) {
-  const query = 'SELECT * FROM ngc_discord_users WHERE guid = ?';
-  try {
-    const rows = await this.executeQuery(query, [discordId]);
-    if (rows.length > 0) {
-      const userData = rows[0];
-      userData.parsedData = this.safeParseJSON(userData.data);
-      return userData;
+  // แทนที่ getDiscordUserData ทั้งหมด
+  async getDiscordUserData(discordId) {
+    const query = "SELECT * FROM ngc_discord_users WHERE guid = ?";
+    try {
+      const rows = await this.executeQuery(query, [discordId]);
+      if (rows.length > 0) {
+        const userData = rows[0];
+        userData.parsedData = this.safeParseJSON(userData.data);
+        return userData;
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Error getting discord user data:", error);
+      throw error;
     }
-    return null;
-  } catch (error) {
-    console.error('❌ Error getting discord user data:', error);
-    throw error;
   }
-}
 
-// แทนที่ getPlayerData ทั้งหมด
-async getPlayerData(steam64) {
-  const query = 'SELECT * FROM ngc_players WHERE guid = ?';
-  try {
-    const rows = await this.executeQuery(query, [steam64]);
-    if (rows.length > 0) {
-      const playerData = rows[0];
-      playerData.parsedData = this.safeParseJSON(playerData.data);
-      return playerData;
+  // แทนที่ getPlayerData ทั้งหมด
+  async getPlayerData(steam64) {
+    const query = "SELECT * FROM ngc_players WHERE guid = ?";
+    try {
+      const rows = await this.executeQuery(query, [steam64]);
+      if (rows.length > 0) {
+        const playerData = rows[0];
+        playerData.parsedData = this.safeParseJSON(playerData.data);
+        return playerData;
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Error getting player data:", error);
+      throw error;
     }
-    return null;
-  } catch (error) {
-    console.error('❌ Error getting player data:', error);
-    throw error;
   }
-}
 
-// แทนที่ getSteam64FromDiscord ทั้งหมด
-async getSteam64FromDiscord(discordId) {
-  try {
-    const userData = await this.getDiscordUserData(discordId);
-    if (userData && userData.parsedData?.entityInfo?.LinkedId_ASE) {
-      return userData.parsedData.entityInfo.LinkedId_ASE;
+  // แทนที่ getSteam64FromDiscord ทั้งหมด
+  async getSteam64FromDiscord(discordId) {
+    try {
+      const userData = await this.getDiscordUserData(discordId);
+      if (userData && userData.parsedData?.entityInfo?.LinkedId_ASE) {
+        return userData.parsedData.entityInfo.LinkedId_ASE;
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Error getting Steam64 from Discord ID:", error);
+      throw error;
     }
-    return null;
-  } catch (error) {
-    console.error('❌ Error getting Steam64 from Discord ID:', error);
-    throw error;
   }
-}
 
-// แทนที่ getCharacterIdFromSteam64 ทั้งหมด
-async getCharacterIdFromSteam64(steam64) {
-  try {
-    const playerData = await this.getPlayerData(steam64);
-    if (playerData && playerData.parsedData?.entityInfo?.MostRecentCharacterId) {
-      return playerData.parsedData.entityInfo.MostRecentCharacterId;
+  // แทนที่ getCharacterIdFromSteam64 ทั้งหมด
+  async getCharacterIdFromSteam64(steam64) {
+    try {
+      const playerData = await this.getPlayerData(steam64);
+      if (
+        playerData &&
+        playerData.parsedData?.entityInfo?.MostRecentCharacterId
+      ) {
+        return playerData.parsedData.entityInfo.MostRecentCharacterId;
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Error getting Character ID from Steam64:", error);
+      throw error;
     }
-    return null;
-  } catch (error) {
-    console.error('❌ Error getting Character ID from Steam64:', error);
-    throw error;
   }
-}
 
   async getUserGameInfo(discordId) {
     try {
@@ -170,7 +173,7 @@ async getCharacterIdFromSteam64(steam64) {
           steam64: null,
           characterId: null,
           userData: null,
-          playerData: null
+          playerData: null,
         };
       }
 
@@ -183,10 +186,10 @@ async getCharacterIdFromSteam64(steam64) {
         steam64: steam64,
         characterId: characterId,
         userData: userData,
-        playerData: playerData
+        playerData: playerData,
       };
     } catch (error) {
-      console.error('❌ Error getting user game info:', error);
+      console.error("❌ Error getting user game info:", error);
       throw error;
     }
   }
@@ -255,9 +258,9 @@ async getCharacterIdFromSteam64(steam64) {
       await this.executeQuery(createTopupLogsTable);
       await this.executeQuery(createSlipHashTable);
       await this.executeQuery(createActiveTicketsTable);
-      console.log('✅ Database tables created/verified');
+      console.log("✅ Database tables created/verified");
     } catch (error) {
-      console.error('❌ Error creating tables:', error);
+      console.error("❌ Error creating tables:", error);
       throw error;
     }
   }
@@ -269,7 +272,7 @@ async getCharacterIdFromSteam64(steam64) {
        ticket_channel_id, ticket_id, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    
+
     try {
       const result = await this.executeQuery(query, [
         data.discordId,
@@ -282,71 +285,72 @@ async getCharacterIdFromSteam64(steam64) {
         data.amount,
         data.ticketChannelId,
         data.ticketId,
-        data.status || 'pending'
+        data.status || "pending",
       ]);
       return result.insertId;
     } catch (error) {
-      console.error('❌ Error logging donation transaction:', error);
+      console.error("❌ Error logging donation transaction:", error);
       throw error;
     }
   }
 
   // เหลือ methods เดิมๆ ที่มีอยู่แล้ว...
   async updateTopupStatus(id, status, additionalData = {}) {
-    const fields = ['status = ?'];
+    const fields = ["status = ?"];
     const values = [status];
 
-    if (status === 'verified') {
-      fields.push('verified_at = NOW()');
+    if (status === "verified") {
+      fields.push("verified_at = NOW()");
     }
-    if (status === 'completed') {
-      fields.push('completed_at = NOW()');
+    if (status === "completed") {
+      fields.push("completed_at = NOW()");
     }
     if (additionalData.verificationData) {
-      fields.push('verification_data = ?');
+      fields.push("verification_data = ?");
       values.push(JSON.stringify(additionalData.verificationData));
     }
     if (additionalData.slipImageUrl) {
-      fields.push('slip_image_url = ?');
+      fields.push("slip_image_url = ?");
       values.push(additionalData.slipImageUrl);
     }
     if (additionalData.errorMessage) {
-      fields.push('error_message = ?');
+      fields.push("error_message = ?");
       values.push(additionalData.errorMessage);
     }
     if (additionalData.rconExecuted !== undefined) {
-      fields.push('rcon_executed = ?');
+      fields.push("rcon_executed = ?");
       values.push(additionalData.rconExecuted);
     }
 
-    const query = `UPDATE topup_logs SET ${fields.join(', ')} WHERE id = ?`;
+    const query = `UPDATE topup_logs SET ${fields.join(", ")} WHERE id = ?`;
     values.push(id);
-    
+
     try {
       await this.executeQuery(query, values);
     } catch (error) {
-      console.error('❌ Error updating topup status:', error);
+      console.error("❌ Error updating topup status:", error);
       throw error;
     }
   }
 
   async checkSlipHash(slipHash) {
-    const query = 'SELECT * FROM slip_hashes WHERE slip_hash = ?';
+    const query = "SELECT * FROM slip_hashes WHERE slip_hash = ?";
     try {
       const rows = await this.executeQuery(query, [slipHash]);
       return rows.length > 0;
     } catch (error) {
-      console.error('❌ Error checking slip hash:', error);
+      console.error("❌ Error checking slip hash:", error);
       throw error;
     }
   }
 
   async saveSlipHash(slipHash, discordId, amount) {
-    const query = 'INSERT INTO slip_hashes (slip_hash, discord_id, amount) VALUES (?, ?, ?)';
+    const query =
+      "INSERT INTO slip_hashes (slip_hash, discord_id, amount) VALUES (?, ?, ?)";
     try {
       await this.executeQuery(query, [slipHash, discordId, amount]);
     } catch (error) {
-      console.error('❌ Error saving slip hash:', error);
+      console.error("❌ Error saving slip hash:", error);
       throw error;
     }
   }
@@ -358,19 +362,19 @@ async getCharacterIdFromSteam64(steam64) {
       ORDER BY position ASC
       LIMIT 20
     `;
-    
+
     try {
       const rows = await this.executeQuery(query);
       return rows;
     } catch (error) {
-      console.error('❌ Error getting tribe scores:', error);
-      
+      console.error("❌ Error getting tribe scores:", error);
+
       // ถ้า table ไม่มี ให้คืน array ว่าง
-      if (error.code === 'ER_NO_SUCH_TABLE') {
-        console.warn('⚠️ tribescore table not found, returning empty array');
+      if (error.code === "ER_NO_SUCH_TABLE") {
+        console.warn("⚠️ tribescore table not found, returning empty array");
         return [];
       }
-      
+
       throw error;
     }
   }
@@ -381,87 +385,251 @@ async getCharacterIdFromSteam64(steam64) {
       WHERE discord_id = ? AND status = 'active'
       ORDER BY created_at DESC
     `;
-    
+
     try {
       const rows = await this.executeQuery(query, [discordId]);
       return rows;
     } catch (error) {
-      console.error('❌ Error getting active tickets:', error);
+      console.error("❌ Error getting active tickets:", error);
       throw error;
     }
   }
 
-  async createActiveTicket(discordId, channelId, ticketId, ticketType = 'donation') {
+  async createActiveTicket(
+    discordId,
+    channelId,
+    ticketId,
+    ticketType = "donation"
+  ) {
     const query = `
       INSERT INTO active_tickets (discord_id, channel_id, ticket_id, ticket_type)
       VALUES (?, ?, ?, ?)
     `;
-    
+
     try {
-      const result = await this.executeQuery(query, [discordId, channelId, ticketId, ticketType]);
+      const result = await this.executeQuery(query, [
+        discordId,
+        channelId,
+        ticketId,
+        ticketType,
+      ]);
       return result.insertId;
     } catch (error) {
-      console.error('❌ Error creating active ticket:', error);
+      console.error("❌ Error creating active ticket:", error);
       throw error;
     }
   }
 
   async updateTicketStatus(ticketId, status) {
-    const query = 'UPDATE active_tickets SET status = ? WHERE ticket_id = ?';
-    
+    const query = "UPDATE active_tickets SET status = ? WHERE ticket_id = ?";
+
     try {
       await this.executeQuery(query, [status, ticketId]);
     } catch (error) {
-      console.error('❌ Error updating ticket status:', error);
+      console.error("❌ Error updating ticket status:", error);
       throw error;
     }
   }
 
   async getTopupByTicketId(ticketId) {
-    const query = 'SELECT * FROM topup_logs WHERE ticket_id = ?';
-    
+    const query = "SELECT * FROM topup_logs WHERE ticket_id = ?";
+
     try {
       const rows = await this.executeQuery(query, [ticketId]);
       return rows[0] || null;
     } catch (error) {
-      console.error('❌ Error getting topup by ticket ID:', error);
+      console.error("❌ Error getting topup by ticket ID:", error);
       throw error;
     }
   }
 
   // เพิ่ม method นี้
-async getActiveSupportTickets(discordId) {
-  const query = `
+  async getActiveSupportTickets(discordId) {
+    const query = `
     SELECT * FROM active_tickets 
     WHERE discord_id = ? AND status = 'active' AND ticket_type = 'support'
     ORDER BY created_at DESC
   `;
-  
-  try {
-    const rows = await this.executeQuery(query, [discordId]);
-    return rows;
-  } catch (error) {
-    console.error('❌ Error getting active support tickets:', error);
-    throw error;
-  }
-}
 
-// เพิ่ม method นี้ด้วย
-async getActiveDonationTickets(discordId) {
-  const query = `
+    try {
+      const rows = await this.executeQuery(query, [discordId]);
+      return rows;
+    } catch (error) {
+      console.error("❌ Error getting active support tickets:", error);
+      throw error;
+    }
+  }
+
+  // เพิ่ม method นี้ด้วย
+  async getActiveDonationTickets(discordId) {
+    const query = `
     SELECT * FROM active_tickets 
     WHERE discord_id = ? AND status = 'active' AND ticket_type = 'donation'
     ORDER BY created_at DESC
   `;
-  
-  try {
-    const rows = await this.executeQuery(query, [discordId]);
-    return rows;
-  } catch (error) {
-    console.error('❌ Error getting active donation tickets:', error);
-    throw error;
+
+    try {
+      const rows = await this.executeQuery(query, [discordId]);
+      return rows;
+    } catch (error) {
+      console.error("❌ Error getting active donation tickets:", error);
+      throw error;
+    }
   }
-}
+
+  // เพิ่ม methods ใหม่ใน DatabaseService class
+
+  // เช็คสถานะผู้เล่นและ server ที่ online อยู่
+  async getPlayerOnlineStatus(steam64) {
+    const query = "SELECT * FROM ngc_players WHERE guid = ?";
+    try {
+      const rows = await this.executeQuery(query, [steam64]);
+      if (rows.length > 0) {
+        const playerData = rows[0];
+        const parsedData = this.safeParseJSON(playerData.data);
+
+        if (parsedData.entityInfo) {
+          return {
+            isOnline: parsedData.entityInfo.Status === "ONLINE",
+            serverKey: parsedData.entityInfo.ServerKey,
+            playerName: parsedData.entityInfo.Name,
+            lastJoinTime: parsedData.entityInfo.LastJoinTime,
+            lastLogoutTime: parsedData.entityInfo.LastLogoutTime,
+            totalPlayTime: parsedData.entityInfo.TotalTimePlayedSecs,
+            ipAddress: parsedData.entityInfo.IpAddress,
+            characterId: parsedData.entityInfo.MostRecentCharacterId,
+          };
+        }
+      }
+      return {
+        isOnline: false,
+        serverKey: null,
+        playerName: null,
+        lastJoinTime: null,
+        lastLogoutTime: null,
+        totalPlayTime: 0,
+        ipAddress: null,
+        characterId: null,
+      };
+    } catch (error) {
+      console.error("❌ Error getting player online status:", error);
+      throw error;
+    }
+  }
+
+  // เช็คผู้เล่นทั้งหมดที่ online ในเซิร์ฟเวอร์ที่ระบุ
+  async getOnlinePlayersInServer(serverKey) {
+    const query = `
+    SELECT guid, data 
+    FROM ngc_players 
+    WHERE JSON_EXTRACT(data, '$.entityInfo.Status') = 'ONLINE'
+    AND JSON_EXTRACT(data, '$.entityInfo.ServerKey') = ?
+  `;
+
+    try {
+      const rows = await this.executeQuery(query, [serverKey]);
+      return rows.map((row) => {
+        const parsedData = this.safeParseJSON(row.data);
+        return {
+          steam64: row.guid,
+          playerName: parsedData.entityInfo?.Name,
+          characterId: parsedData.entityInfo?.MostRecentCharacterId,
+          lastJoinTime: parsedData.entityInfo?.LastJoinTime,
+          ipAddress: parsedData.entityInfo?.IpAddress,
+          totalPlayTime: parsedData.entityInfo?.TotalTimePlayedSecs,
+        };
+      });
+    } catch (error) {
+      console.error("❌ Error getting online players in server:", error);
+      throw error;
+    }
+  }
+
+  // เช็คจำนวนผู้เล่น online ในแต่ละเซิร์ฟเวอร์
+  async getServerPlayerCounts() {
+    const query = `
+    SELECT 
+      JSON_EXTRACT(data, '$.entityInfo.ServerKey') as serverKey,
+      COUNT(*) as playerCount
+    FROM ngc_players 
+    WHERE JSON_EXTRACT(data, '$.entityInfo.Status') = 'ONLINE'
+    GROUP BY JSON_EXTRACT(data, '$.entityInfo.ServerKey')
+  `;
+
+    try {
+      const rows = await this.executeQuery(query);
+      const result = {};
+      rows.forEach((row) => {
+        const serverKey = row.serverKey?.replace(/"/g, ""); // Remove quotes from JSON extract
+        if (serverKey) {
+          result[serverKey] = parseInt(row.playerCount);
+        }
+      });
+      return result;
+    } catch (error) {
+      console.error("❌ Error getting server player counts:", error);
+      throw error;
+    }
+  }
+
+  // เช็คประวัติการเข้าเซิร์ฟเวอร์ของผู้เล่น
+  async getPlayerServerHistory(steam64, limit = 10) {
+    const query = "SELECT * FROM ngc_players WHERE guid = ?";
+    try {
+      const rows = await this.executeQuery(query, [steam64]);
+      if (rows.length > 0) {
+        const playerData = rows[0];
+        const parsedData = this.safeParseJSON(playerData.data);
+
+        return {
+          currentServer: parsedData.entityInfo?.ServerKey,
+          previousServer: parsedData.entityInfo?.PreviousServerKey,
+          lastJoinTime: parsedData.entityInfo?.LastJoinTime,
+          lastLogoutTime: parsedData.entityInfo?.LastLogoutTime,
+          totalPlayTime: parsedData.entityInfo?.TotalTimePlayedSecs,
+          isOnline: parsedData.entityInfo?.Status === "ONLINE",
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Error getting player server history:", error);
+      throw error;
+    }
+  }
+
+  // อัพเดท getUserGameInfo ให้รวมข้อมูล server status
+  async getUserGameInfo(discordId) {
+    try {
+      const steam64 = await this.getSteam64FromDiscord(discordId);
+      if (!steam64) {
+        return {
+          isLinked: false,
+          steam64: null,
+          characterId: null,
+          userData: null,
+          playerData: null,
+          onlineStatus: null,
+        };
+      }
+
+      const characterId = await this.getCharacterIdFromSteam64(steam64);
+      const userData = await this.getDiscordUserData(discordId);
+      const playerData = await this.getPlayerData(steam64);
+      const onlineStatus = await this.getPlayerOnlineStatus(steam64);
+
+      return {
+        isLinked: true,
+        steam64: steam64,
+        characterId: characterId,
+        userData: userData,
+        playerData: playerData,
+        onlineStatus: onlineStatus,
+      };
+    } catch (error) {
+      console.error("❌ Error getting user game info:", error);
+      throw error;
+    }
+  }
 
   // เพิ่มเมธอดสำหรับตรวจสอบสถานะ connection
   async healthCheck() {
@@ -469,9 +637,9 @@ async getActiveDonationTickets(discordId) {
       const connection = await this.getConnection();
       await connection.ping();
       connection.release();
-      return { status: 'healthy', connected: true };
+      return { status: "healthy", connected: true };
     } catch (error) {
-      return { status: 'unhealthy', connected: false, error: error.message };
+      return { status: "unhealthy", connected: false, error: error.message };
     }
   }
 
@@ -481,7 +649,7 @@ async getActiveDonationTickets(discordId) {
       await this.pool.end();
       this.pool = null;
       this.isConnected = false;
-      console.log('✅ Database pool closed');
+      console.log("✅ Database pool closed");
     }
   }
 }
