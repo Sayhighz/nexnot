@@ -20,103 +20,119 @@ class DiscordBot {
 
   // ส่วนของ init() method ใน src/index.js
 
-async init() {
-  try {
-    console.log('🚀 Starting NEXArk Discord Bot...');
-    
-    // Test config file first
-    console.log('🧪 Testing configuration file...');
-    const configTest = await configService.testConfigFile();
-    if (!configTest.success) {
-      console.error('❌ Config file test failed:', configTest.error);
+  async init() {
+    try {
+      console.log('🚀 Starting NEXArk Discord Bot...');
+      
+      // Test config file first
+      console.log('🧪 Testing configuration file...');
+      const configTest = await configService.testConfigFile();
+      if (!configTest.success) {
+        console.error('❌ Config file test failed:', configTest.error);
+        process.exit(1);
+      }
+      console.log('✅ Config file test passed');
+      
+      // Load configuration
+      console.log('📁 Loading configuration...');
+      await configService.loadConfig();
+      console.log('✅ Configuration loaded successfully');
+  
+      // ✅ เพิ่มส่วนนี้: Reinitialize services หลังจาก config โหลดเสร็จ
+      console.log('🔄 Reinitializing services with new config...');
+      
+      // Reinitialize webhook service
+      try {
+        this.webhookService = (await import('./services/webhookService.js')).default;
+        this.webhookService.reloadConfig();
+        console.log('✅ Webhook service reinitialized');
+      } catch (error) {
+        console.warn('⚠️ Webhook service reinitialize failed:', error.message);
+      }
+      
+      // Reinitialize RCON manager
+      try {
+        this.rconManager = (await import('./components/rconManager.js')).default;
+        this.rconManager.reloadConfig();
+        console.log('✅ RCON manager reinitialized');
+      } catch (error) {
+        console.warn('⚠️ RCON manager reinitialize failed:', error.message);
+      }
+  
+      // Validate configuration
+      console.log('🔍 Validating configuration...');
+      const validation = configService.validateConfig();
+      if (!validation.isValid) {
+        console.error('❌ Configuration validation failed:');
+        validation.errors.forEach(error => console.error(`  - ${error}`));
+        
+        // ไม่ exit หาก error เป็นเรื่อง RCON หรือ webhook
+        const criticalErrors = validation.errors.filter(error => 
+          !error.includes('RCON') && 
+          !error.includes('webhook') &&
+          !error.includes('EasySlip')
+        );
+        
+        if (criticalErrors.length > 0) {
+          console.error('❌ Critical configuration errors found');
+          process.exit(1);
+        } else {
+          console.warn('⚠️ Non-critical configuration warnings (continuing...)');
+        }
+      } else {
+        console.log('✅ Configuration validation passed');
+      }
+  
+      // Show debug info
+      console.log('🔍 Configuration debug info:');
+      const debugInfo = configService.getDebugInfo();
+      console.log(JSON.stringify(debugInfo, null, 2));
+  
+      // Initialize Discord client
+      console.log('🤖 Initializing Discord client...');
+      this.client = new Client({
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent,
+          GatewayIntentBits.GuildMembers,
+          GatewayIntentBits.DirectMessages,
+        ],
+        allowedMentions: {
+          parse: ['users', 'roles'],
+          repliedUser: false
+        }
+      });
+  
+      // Initialize systems
+      this.topupSystem = new TopupSystem(this.client);
+      this.scoreboardManager = new ScoreboardManager(this.client);
+  
+      // Connect to database
+      console.log('🔌 Connecting to database...');
+      await databaseService.connect();
+      await databaseService.createTables();
+      console.log('✅ Database connected and tables created');
+  
+      // Test services (หลังจาก reinitialize แล้ว)
+      await this.testServices();
+  
+      // Setup event listeners
+      this.setupEventListeners();
+  
+      // Login bot
+      const token = configService.getDiscordToken();
+      console.log('🔐 Logging in to Discord...');
+      await this.client.login(token);
+  
+      logService.info("NEXArk Discord Bot started successfully");
+  
+    } catch (error) {
+      logService.error("Failed to start NEXArk Discord Bot:", error);
+      console.error('❌ Bot startup failed:', error);
       process.exit(1);
     }
-    console.log('✅ Config file test passed');
-    
-    // Load configuration
-    console.log('📁 Loading configuration...');
-    await configService.loadConfig();
-    console.log('✅ Configuration loaded successfully');
-
-    // Validate configuration
-    console.log('🔍 Validating configuration...');
-    const validation = configService.validateConfig();
-    if (!validation.isValid) {
-      console.error('❌ Configuration validation failed:');
-      validation.errors.forEach(error => console.error(`  - ${error}`));
-      
-      // ไม่ exit หาก error เป็นเรื่อง RCON หรือ webhook
-      const criticalErrors = validation.errors.filter(error => 
-        !error.includes('RCON') && 
-        !error.includes('webhook') &&
-        !error.includes('EasySlip')
-      );
-      
-      if (criticalErrors.length > 0) {
-        console.error('❌ Critical configuration errors found');
-        process.exit(1);
-      } else {
-        console.warn('⚠️ Non-critical configuration warnings (continuing...)');
-      }
-    } else {
-      console.log('✅ Configuration validation passed');
-    }
-
-    // Show debug info
-    console.log('🔍 Configuration debug info:');
-    const debugInfo = configService.getDebugInfo();
-    console.log(JSON.stringify(debugInfo, null, 2));
-
-    // Initialize Discord client
-    console.log('🤖 Initializing Discord client...');
-    this.client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.DirectMessages,
-      ],
-      allowedMentions: {
-        parse: ['users', 'roles'],
-        repliedUser: false
-      }
-    });
-
-    // Initialize services แต่อย่า fail ถ้า config ไม่ครบ
-    console.log('⚙️ Initializing services...');
-    this.webhookService = webhookService;
-    this.rconManager = rconManager;
-    
-    // Initialize systems
-    this.topupSystem = new TopupSystem(this.client);
-    this.scoreboardManager = new ScoreboardManager(this.client);
-
-    // Connect to database
-    console.log('🔌 Connecting to database...');
-    await databaseService.connect();
-    await databaseService.createTables();
-    console.log('✅ Database connected and tables created');
-
-    // Test services (don't fail if they're not configured)
-    await this.testServices();
-
-    // Setup event listeners
-    this.setupEventListeners();
-
-    // Login bot
-    const token = configService.getDiscordToken();
-    console.log('🔐 Logging in to Discord...');
-    await this.client.login(token);
-
-    logService.info("NEXArk Discord Bot started successfully");
-
-  } catch (error) {
-    logService.error("Failed to start NEXArk Discord Bot:", error);
-    console.error('❌ Bot startup failed:', error);
-    process.exit(1);
   }
-}
 
 // เพิ่ม method ใหม่
 async testServices() {

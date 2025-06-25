@@ -21,13 +21,19 @@ class ConfigService {
       try {
         await fs.access(this.configPath);
         console.log('✅ Config file exists');
+        
+        // ตรวจสอบขนาดไฟล์
+        const stats = await fs.stat(this.configPath);
+        console.log('📊 File size:', stats.size, 'bytes');
+        
       } catch (error) {
         console.error('❌ Config file not found:', this.configPath);
         throw new Error(`Configuration file not found at: ${this.configPath}`);
       }
-
+  
       const configData = await fs.readFile(this.configPath, 'utf8');
       console.log('📄 Config file read successfully, size:', configData.length, 'bytes');
+      console.log('🔍 First 200 chars:', configData.substring(0, 200));
       
       this.config = JSON.parse(configData);
       this.loadedAt = new Date();
@@ -35,20 +41,24 @@ class ConfigService {
       console.log('✅ Configuration loaded successfully');
       console.log('📊 Config sections found:', Object.keys(this.config));
       
-      // Debug สำคัญๆ
-      console.log('🔍 Key config sections:');
-      console.log('  - rcon_servers:', !!this.config.rcon_servers, 
-        this.config.rcon_servers ? `(${Object.keys(this.config.rcon_servers).length} servers)` : '');
-      console.log('  - discord_webhook:', !!this.config.discord_webhook, 
-        this.config.discord_webhook ? `(enabled: ${this.config.discord_webhook.enabled})` : '');
-      console.log('  - bot:', !!this.config.bot);
-      console.log('  - database:', !!this.config.database);
+      // 🚨 เพิ่ม debug เฉพาะ sections ที่มีปัญหา
+      console.log('🔍 RCON servers debug:');
+      console.log('  - rcon_servers exists:', !!this.config.rcon_servers);
+      console.log('  - rcon_servers keys:', this.config.rcon_servers ? Object.keys(this.config.rcon_servers) : 'NULL');
+      console.log('  - rcon_servers content:', JSON.stringify(this.config.rcon_servers, null, 2));
+      
+      console.log('🔍 Discord webhook debug:');
+      console.log('  - discord_webhook exists:', !!this.config.discord_webhook);
+      console.log('  - webhook enabled:', this.config.discord_webhook?.enabled);
+      console.log('  - webhook URL exists:', !!this.config.discord_webhook?.donation_webhook_url);
+      console.log('  - webhook content:', JSON.stringify(this.config.discord_webhook, null, 2));
       
       return this.config;
     } catch (error) {
       console.error('❌ Error loading configuration:', error);
       if (error.name === 'SyntaxError') {
         console.error('❌ JSON Syntax Error in config file. Please check your config.json syntax.');
+        console.error('❌ Error details:', error.message);
       }
       throw new Error('Cannot load configuration file: ' + error.message);
     }
@@ -311,6 +321,9 @@ class ConfigService {
       };
     }
   }
+
+  
+
 }
 
 export default new ConfigService();
