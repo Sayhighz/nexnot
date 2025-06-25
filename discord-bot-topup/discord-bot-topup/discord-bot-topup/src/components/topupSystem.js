@@ -1,5 +1,4 @@
-// src/components/topupSystem.js (แก้ไขส่วนสำคัญ)
-
+// src/components/topupSystem.js
 import { 
   ActionRowBuilder, 
   ButtonBuilder, 
@@ -29,6 +28,7 @@ class TopupSystem {
     this.client = client;
     this.activeTickets = new Map();
     this.userCooldowns = new Map();
+    this.temporarySteamIds = new Map(); // ✅ เพิ่ม Map สำหรับเก็บ Steam ID ชั่วคราว
   }
 
   async init() {
@@ -162,6 +162,10 @@ class TopupSystem {
           await this.showDonationCategory(interaction, 'items');
           break;
 
+        case 'input_steam_id': // ✅ เพิ่ม case สำหรับปุ่มกรอก Steam ID
+          await this.showSteamIdModal(interaction);
+          break;
+
         case 'cancel_donation':
           await interaction.deferReply();
           await this.cancelDonation(interaction);
@@ -246,19 +250,17 @@ class TopupSystem {
     }
   }
 
-  // ✅ เพิ่ม handleModalSubmit
+  // ✅ แก้ไข handleModalSubmit
   async handleModalSubmit(interaction) {
     try {
       console.log(`📝 Modal submit: ${interaction.customId} by ${interaction.user.tag}`);
       
-      await interaction.deferReply({ ephemeral: true });
-      
-      // Handle different modal types here
-      if (interaction.customId.startsWith('steam64_input_')) {
-        await this.handleSteam64Input(interaction);
+      if (interaction.customId === 'steam_id_modal') {
+        await this.handleSteamIdSubmit(interaction);
       } else {
-        await interaction.editReply({
-          content: '❌ Modal นี้ไม่รองรับหรือหมดอายุแล้ว'
+        await interaction.reply({
+          content: '❌ Modal นี้ไม่รองรับหรือหมดอายุแล้ว',
+          ephemeral: true
         });
       }
     } catch (error) {
@@ -277,62 +279,136 @@ class TopupSystem {
     }
   }
 
-  // ✅ เพิ่ม handleSlashCommands
-  async handleSlashCommands(interaction) {
+  // ✅ เพิ่ม method สำหรับแสดง Steam ID Modal
+  async showSteamIdModal(interaction) {
+    const modal = new ModalBuilder()
+      .setCustomId('steam_id_modal')
+      .setTitle('🆔 กรอก Steam64 ID');
+
+    const steamIdInput = new TextInputBuilder()
+      .setCustomId('steam_id_input')
+      .setLabel('Steam64 ID (17 ตัวเลข)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('76561198000000000')
+      .setRequired(true)
+      .setMinLength(17)
+      .setMaxLength(17);
+
+    const firstRow = new ActionRowBuilder().addComponents(steamIdInput);
+    modal.addComponents(firstRow);
+
+    await interaction.showModal(modal);
+  }
+
+  // ✅ เพิ่ม method สำหรับ handle Steam ID Submit
+  async handleSteamIdSubmit(interaction) {
     try {
-      const { commandName } = interaction;
-      
-      switch (commandName) {
-        case 'setup_menu':
-          await this.handleSetupMenuCommand(interaction);
-          break;
-        case 'setup_scoreboard':
-          await this.handleSetupScoreboardCommand(interaction);
-          break;
-        default:
-          await interaction.reply({
-            content: '❌ คำสั่งนี้ไม่รองรับ',
-            ephemeral: true
-          });
+      await interaction.deferReply({ ephemeral: true });
+
+      const steamId = interaction.fields.getTextInputValue('steam_id_input');
+      const userId = interaction.user.id;
+
+      // ตรวจสอบ Steam64 ID format
+      if (!Helpers.validateSteam64(steamId)) {
+        return await interaction.editReply({
+          content: '❌ Steam64 ID ไม่ถูกต้อง กรุณากรอกเลข 17 หลักที่ขึ้นต้นด้วย 7656119'
+        });
       }
+
+      // บันทึก Steam ID ชั่วคราว (จะหายไปเมื่อบอทรีสตาร์ท)
+      this.temporarySteamIds.set(userId, {
+        steamId: steamId,
+        timestamp: Date.now()
+      });
+
+      // แสดงเมนูหมวดหมู่
+      await interaction.editReply({
+        content: `✅ บันทึก Steam64 ID เรียบร้อยแล้ว: \`${steamId}\`\n\n🎯 กรุณาเลือกหมวดหมู่ที่ต้องการ:`,
+        components: [
+          new ActionRowBuilder()
+            .addComponents(
+              new ButtonBuilder()
+                .setCustomId('temp_donate_points')
+                .setLabel('💰 โดเนทพ้อย')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('💎'),
+              new ButtonBuilder()
+                .setCustomId('temp_donate_ranks')
+                .setLabel('👑 โดเนทยศ')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('⭐'),
+              new ButtonBuilder()
+                .setCustomId('temp_donate_items')
+                .setLabel('🎁 โดเนทไอเทม')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🎪')
+            )
+        ]
+      });
+
+      console.log(`🆔 Temporary Steam ID saved for ${interaction.user.tag}: ${steamId}`);
+
     } catch (error) {
-      logService.error('Slash command error:', error);
-      
-      try {
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({
-            content: '❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
-            ephemeral: true
-          });
-        }
-      } catch (replyError) {
-        console.error('Failed to handle command error:', replyError);
-      }
+      logService.error('Error handling Steam ID submit:', error);
+      await interaction.editReply({
+        content: '❌ เกิดข้อผิดพลาดในการบันทึก Steam ID'
+      });
     }
   }
 
+  // ✅ แก้ไข showDonationCategory
   async showDonationCategory(interaction, category) {
     const userId = interaction.user.id;
     
     try {
-      // Check user link status
-      const userGameInfo = await databaseService.getUserGameInfo(userId);
-      if (!Validators.validateUserGameInfo(userGameInfo, category)) {
-        if (!userGameInfo.isLinked) {
-          const embed = EmbedBuilders.createNoLinkEmbed();
-          return await interaction.editReply({ embeds: [embed] });
-        }
-        
-        if (category === 'items' && !userGameInfo.characterId) {
-          const embed = EmbedBuilders.createErrorEmbed(
-            '❌ ไม่พบข้อมูลตัวละคร',
-            'ไม่พบข้อมูลตัวละครในเกม กรุณาเข้าเกมอย่างน้อย 1 ครั้งแล้วลองใหม่'
-          );
-          return await interaction.editReply({ embeds: [embed] });
+      // ตรวจสอบว่าเป็นการใช้ temporary steam id หรือไม่
+      let userGameInfo = null;
+      let isTemporary = false;
+
+      // ตรวจสอบว่ามี custom id ที่ขึ้นต้นด้วย temp_ หรือไม่
+      if (interaction.customId && interaction.customId.startsWith('temp_')) {
+        // ใช้ temporary steam id
+        const tempData = this.temporarySteamIds.get(userId);
+        if (tempData) {
+          userGameInfo = {
+            isLinked: false,
+            steam64: tempData.steamId,
+            characterId: null,
+            userData: null,
+            playerData: null,
+            isTemporary: true
+          };
+          isTemporary = true;
         }
       }
 
-      // Check active donation tickets
+      // ถ้าไม่ใช่ temporary หรือไม่มี temp data ให้ตรวจสอบ link ปกติ
+      if (!userGameInfo) {
+        userGameInfo = await databaseService.getUserGameInfo(userId);
+      }
+
+      // ถ้าไม่มีข้อมูลเลย ให้แสดง no link embed
+      if (!userGameInfo || (!userGameInfo.isLinked && !userGameInfo.isTemporary)) {
+        const config = configService.getConfig();
+        const linkChannelId = config.channels?.link_discord_channel_id;
+        const embed = EmbedBuilders.createNoLinkEmbed(linkChannelId);
+        
+        const linkButtons = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('input_steam_id')
+              .setLabel('🆔 กรอก Steam64 ID')
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('⚡')
+          );
+
+        return await interaction.editReply({ 
+          embeds: [embed],
+          components: [linkButtons]
+        });
+      }
+
+      // ตรวจสอบ active donation tickets
       const activeDonationTickets = await databaseService.getActiveDonationTickets(userId);
       if (activeDonationTickets.length >= CONSTANTS.TICKET.MAX_TICKETS_PER_USER) {
         const embed = EmbedBuilders.createMaxTicketEmbed(
@@ -352,11 +428,11 @@ class TopupSystem {
       }
 
       const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(`select_donation_${category}`)
+        .setCustomId(`select_donation_${category}${isTemporary ? '_temp' : ''}`) // เพิ่ม _temp ถ้าเป็น temporary
         .setPlaceholder(`🔥 เลือก${BrandUtils.categoryDisplayNames[category]}ที่ต้องการ ${BrandUtils.categoryIcons[category]}`)
         .addOptions(
-          donations.slice(0, 25).map(item => ({ // จำกัด 25 items ต่อ menu
-            label: item.name.substring(0, 100), // จำกัดความยาว label
+          donations.slice(0, 25).map(item => ({ 
+            label: item.name.substring(0, 100),
             description: `💰 ${Helpers.formatCurrency(item.price)} | ${item.description?.substring(0, 100) || 'ไม่มีรายละเอียด'}`,
             value: item.id,
             emoji: BrandUtils.categoryIcons[category]
@@ -364,13 +440,26 @@ class TopupSystem {
         );
 
       const row = new ActionRowBuilder().addComponents(selectMenu);
-      const embed = EmbedBuilders.createCategorySelectionEmbed(
-        category, 
-        userGameInfo, 
-        activeDonationTickets, 
-        CONSTANTS.TICKET.MAX_TICKETS_PER_USER, 
-        donations
-      );
+      
+      // เลือก embed ที่เหมาะสม
+      let embed;
+      if (isTemporary) {
+        embed = EmbedBuilders.createTemporarySteamIdEmbed(
+          category, 
+          userGameInfo.steam64, 
+          activeDonationTickets, 
+          CONSTANTS.TICKET.MAX_TICKETS_PER_USER, 
+          donations
+        );
+      } else {
+        embed = EmbedBuilders.createCategorySelectionEmbed(
+          category, 
+          userGameInfo, 
+          activeDonationTickets, 
+          CONSTANTS.TICKET.MAX_TICKETS_PER_USER, 
+          donations
+        );
+      }
 
       await interaction.editReply({
         embeds: [embed],
@@ -385,13 +474,25 @@ class TopupSystem {
     }
   }
 
+  // ✅ แก้ไข handleDonationSelection
   async handleDonationSelection(interaction) {
     try {
-      const [, , category] = interaction.customId.split('_');
+      let category, isTemporary = false;
+      const customIdParts = interaction.customId.split('_');
+      
+      if (customIdParts.length === 4 && customIdParts[3] === 'temp') {
+        // temporary donation selection
+        category = customIdParts[2];
+        isTemporary = true;
+      } else {
+        // normal donation selection
+        category = customIdParts[2];
+      }
+
       const selectedId = interaction.values[0];
       const userId = interaction.user.id;
 
-      console.log(`💰 Donation selection: ${category}/${selectedId} by ${interaction.user.tag}`);
+      console.log(`💰 Donation selection: ${category}/${selectedId} by ${interaction.user.tag} (temporary: ${isTemporary})`);
 
       // Get donation item
       const config = configService.getConfig();
@@ -405,10 +506,30 @@ class TopupSystem {
       }
 
       // Get user game info
-      const userGameInfo = await databaseService.getUserGameInfo(userId);
-      if (!Validators.validateUserGameInfo(userGameInfo, category)) {
-        const embed = EmbedBuilders.createNoLinkEmbed();
-        return await interaction.editReply({ embeds: [embed] });
+      let userGameInfo;
+      if (isTemporary) {
+        const tempData = this.temporarySteamIds.get(userId);
+        if (!tempData) {
+          return await interaction.editReply({
+            content: '❌ ไม่พบข้อมูล Steam ID ชั่วคราว กรุณากรอกใหม่'
+          });
+        }
+        userGameInfo = {
+          isLinked: false,
+          steam64: tempData.steamId,
+          characterId: null,
+          userData: null,
+          playerData: null,
+          isTemporary: true
+        };
+      } else {
+        userGameInfo = await databaseService.getUserGameInfo(userId);
+        if (!Validators.validateUserGameInfo(userGameInfo, category)) {
+          const config = configService.getConfig();
+          const linkChannelId = config.channels?.link_discord_channel_id;
+          const embed = EmbedBuilders.createNoLinkEmbed(linkChannelId);
+          return await interaction.editReply({ embeds: [embed] });
+        }
       }
 
       // Create donation ticket
@@ -500,7 +621,8 @@ class TopupSystem {
         ticketId,
         category,
         itemName: donationItem.name,
-        amount: donationItem.price
+        amount: donationItem.price,
+        isTemporary: userGameInfo.isTemporary || false
       });
 
     } catch (error) {
@@ -600,37 +722,25 @@ class TopupSystem {
     }
   }
 
-  // แก้ไขใน TopupSystem class method executeDonation
+  // ✅ แก้ไข executeDonation ให้ใช้เซิร์ฟเวอร์เดียว
+  async executeDonation(message, ticketData, verificationResult) {
+    try {
+      // Send executing message
+      const executingEmbed = EmbedBuilders.createExecutingDonationEmbed(ticketData);
+      const executingMessage = await message.channel.send({ embeds: [executingEmbed] });
 
-async executeDonation(message, ticketData, verificationResult) {
-  try {
-    // Send executing message
-    const executingEmbed = EmbedBuilders.createExecutingDonationEmbed(ticketData);
-    const executingMessage = await message.channel.send({ embeds: [executingEmbed] });
+      const { category, donationItem, userGameInfo } = ticketData;
+      
+      console.log('🎮 Executing donation for Steam64:', userGameInfo.steam64);
 
-    // ตรวจสอบสถานะผู้เล่นและเซิร์ฟเวอร์ที่ online อยู่
-    const { category, donationItem, userGameInfo } = ticketData;
-    
-    // เช็คสถานะผู้เล่นล่าสุด
-    const playerStatus = await databaseService.getPlayerOnlineStatus(userGameInfo.steam64);
-    
-    console.log('🎮 Player status check:', {
-      steam64: userGameInfo.steam64,
-      isOnline: playerStatus.isOnline,
-      serverKey: playerStatus.serverKey,
-      playerName: playerStatus.playerName
-    });
+      let success = false;
+      let errorMessage = null;
+      const targetServer = 'main'; // ✅ ใช้เซิร์ฟเวอร์เดียวเสมอ
 
-    let success = false;
-    let errorMessage = null;
-    let targetServer = null;
-
-    // Execute based on category
-    switch (category) {
-      case 'points':
-        if (playerStatus.isOnline && playerStatus.serverKey) {
-          // ส่งพ้อยไปที่เซิร์ฟเวอร์ที่ผู้เล่น online อยู่
-          targetServer = playerStatus.serverKey;
+      // Execute based on category
+      switch (category) {
+        case 'points':
+          console.log(`💰 Giving ${donationItem.points} points to ${userGameInfo.steam64} on ${targetServer}`);
           const pointsResult = await rconManager.givePointsToServer(
             targetServer, 
             userGameInfo.steam64, 
@@ -638,35 +748,26 @@ async executeDonation(message, ticketData, verificationResult) {
           );
           success = pointsResult.success;
           errorMessage = pointsResult.error;
-        } else {
-          // ถ้าผู้เล่น offline ให้ส่งไปเซิร์ฟเวอร์หลัก (หรือทุกเซิร์ฟเวอร์)
-          const servers = rconManager.getAllServers().filter(s => s.isAvailable);
-          if (servers.length > 0) {
-            targetServer = servers[0].serverKey; // เซิร์ฟเวอร์แรกที่ใช้งานได้
-            const pointsResult = await rconManager.givePointsToServer(
+          break;
+
+        case 'ranks':
+          console.log(`👑 Giving rank ${donationItem.rank} to ${userGameInfo.steam64} on ${targetServer}`);
+          if (donationItem.rcon_commands && donationItem.rcon_commands.length > 0) {
+            const rankResult = await rconManager.executeRankCommands(
               targetServer,
               userGameInfo.steam64,
-              donationItem.points
+              donationItem.rcon_commands
             );
-            success = pointsResult.success;
-            errorMessage = pointsResult.error;
+            success = rankResult.success;
+            errorMessage = rankResult.error;
           } else {
-            errorMessage = 'ไม่มีเซิร์ฟเวอร์ที่ใช้งานได้';
+            errorMessage = 'ไม่พบคำสั่ง RCON สำหรับยศนี้';
           }
-        }
-        break;
+          break;
 
-      case 'ranks':
-        // Add rank logic here - similar to points
-        success = true; // Placeholder
-        targetServer = playerStatus.serverKey || 'main';
-        break;
-
-      case 'items':
-        if (donationItem.items && donationItem.items.length > 0) {
-          if (playerStatus.isOnline && playerStatus.serverKey) {
-            // ส่งไอเทมไปที่เซิร์ฟเวอร์ที่ผู้เล่น online อยู่
-            targetServer = playerStatus.serverKey;
+        case 'items':
+          console.log(`🎁 Giving items to ${userGameInfo.steam64} on ${targetServer}`);
+          if (donationItem.items && donationItem.items.length > 0) {
             let allSuccess = true;
             
             for (const item of donationItem.items) {
@@ -682,142 +783,147 @@ async executeDonation(message, ticketData, verificationResult) {
               if (!itemResult.success) {
                 allSuccess = false;
                 errorMessage = itemResult.error;
+                console.error(`❌ Failed to give item ${item.path}:`, itemResult.error);
                 break;
               }
             }
             success = allSuccess;
           } else {
-            // ผู้เล่น offline - ไม่สามารถส่งไอเทมได้
-            errorMessage = 'ผู้เล่นต้อง online ในเกมจึงจะสามารถรับไอเทมได้ กรุณาเข้าเกมแล้วติดต่อแอดมิน';
-            success = false;
+            errorMessage = 'ไม่พบรายการไอเทมที่ต้องส่ง';
           }
-        }
-        break;
+          break;
 
-      default:
-        errorMessage = 'หมวดหมู่ไม่รองรับ';
-    }
-
-    // Update database and send result
-    const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
-    
-    if (success) {
-      // Success - ส่ง webhook notification
-      if (topupLog) {
-        await databaseService.updateTopupStatus(topupLog.id, 'completed', {
-          rconExecuted: true
-        });
+        default:
+          errorMessage = 'หมวดหมู่ไม่รองรับ';
       }
 
-      // ส่งข้อมูลไป Discord webhook
-      await this.sendDonationWebhook({
-        discordId: message.author.id,
-        discordUsername: message.author.username,
-        steam64: userGameInfo.steam64,
-        characterId: userGameInfo.characterId,
-        category: category,
-        itemName: donationItem.name,
-        amount: donationItem.price,
-        server: targetServer,
-        status: 'completed',
-        ticketId: ticketData.ticketId,
-        playerName: playerStatus.playerName,
-        points: donationItem.points,
-        items: donationItem.items,
-        timestamp: new Date().toISOString()
-      });
-
-      const successEmbed = EmbedBuilders.createDonationCompletedEmbed(ticketData, category, donationItem);
+      // Update database and send result
+      const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
       
-      // เพิ่มข้อมูลเซิร์ฟเวอร์ในข้อความ
-      if (targetServer) {
+      if (success) {
+        console.log(`✅ Donation executed successfully for ${userGameInfo.steam64}`);
+        
+        // Success - อัพเดทฐานข้อมูล
+        if (topupLog) {
+          await databaseService.updateTopupStatus(topupLog.id, 'completed', {
+            rconExecuted: true
+          });
+        }
+
+        // ส่งข้อมูลไป Discord webhook
+        await this.sendDonationWebhook({
+          discordId: message.author.id,
+          discordUsername: message.author.username,
+          steam64: userGameInfo.steam64,
+          characterId: userGameInfo.characterId,
+          category: category,
+          itemName: donationItem.name,
+          amount: donationItem.price,
+          server: targetServer,
+          status: 'completed',
+          ticketId: ticketData.ticketId,
+          playerName: message.author.username,
+          points: donationItem.points,
+          items: donationItem.items,
+          timestamp: new Date().toISOString()
+        });
+
+        const successEmbed = EmbedBuilders.createDonationCompletedEmbed(ticketData, category, donationItem);
+        
+        // เพิ่มข้อมูลเซิร์ฟเวอร์ในข้อความ
         successEmbed.addFields({
           name: '🎮 เซิร์ฟเวอร์',
-          value: `**เซิร์ฟเวอร์:** ${targetServer}\n**สถานะผู้เล่น:** ${playerStatus.isOnline ? '🟢 Online' : '🔴 Offline'}`,
+          value: `**เซิร์ฟเวอร์:** ${targetServer}\n**Steam64 ID:** \`${userGameInfo.steam64}\``,
           inline: false
         });
-      }
-      
-      await executingMessage.edit({ embeds: [successEmbed] });
+        
+        await executingMessage.edit({ embeds: [successEmbed] });
 
-      // Schedule channel deletion
-      await databaseService.updateTicketStatus(ticketData.ticketId, 'completed');
-      this.activeTickets.delete(message.channel.id);
-      
-      setTimeout(async () => {
-        try {
-          await message.channel.delete();
-        } catch (error) {
-          console.error('Error deleting completed ticket channel:', error);
+        // Schedule channel deletion
+        await databaseService.updateTicketStatus(ticketData.ticketId, 'completed');
+        this.activeTickets.delete(message.channel.id);
+        
+        // ลบ temporary steam id ถ้ามี
+        if (userGameInfo.isTemporary) {
+          this.temporarySteamIds.delete(message.author.id);
         }
-      }, 300000); // 5 minutes
+        
+        setTimeout(async () => {
+          try {
+            await message.channel.delete();
+          } catch (error) {
+            console.error('Error deleting completed ticket channel:', error);
+          }
+        }, 300000); // 5 minutes
 
-    } else {
-      // Failed
-      if (topupLog) {
-        await databaseService.updateTopupStatus(topupLog.id, 'failed', {
-          errorMessage: errorMessage,
-          rconExecuted: false
+      } else {
+        console.error(`❌ Donation failed for ${userGameInfo.steam64}:`, errorMessage);
+        
+        // Failed
+        if (topupLog) {
+          await databaseService.updateTopupStatus(topupLog.id, 'failed', {
+            errorMessage: errorMessage,
+            rconExecuted: false
+          });
+        }
+
+        // ส่ง webhook สำหรับ failed donation
+        await this.sendDonationWebhook({
+          discordId: message.author.id,
+          discordUsername: message.author.username,
+          steam64: userGameInfo.steam64,
+          characterId: userGameInfo.characterId,
+          category: category,
+          itemName: donationItem.name,
+          amount: donationItem.price,
+          server: targetServer,
+          status: 'failed',
+          ticketId: ticketData.ticketId,
+          playerName: message.author.username,
+          error: errorMessage,
+          timestamp: new Date().toISOString()
         });
+
+        const failedEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, errorMessage);
+        await executingMessage.edit({ embeds: [failedEmbed] });
       }
 
-      // ส่ง webhook สำหรับ failed donation
-      await this.sendDonationWebhook({
-        discordId: message.author.id,
-        discordUsername: message.author.username,
-        steam64: userGameInfo.steam64,
-        characterId: userGameInfo.characterId,
-        category: category,
-        itemName: donationItem.name,
-        amount: donationItem.price,
-        server: targetServer || 'unknown',
-        status: 'failed',
+      logService.logTopupEvent(success ? 'completed' : 'failed', message.author.id, {
         ticketId: ticketData.ticketId,
-        playerName: playerStatus.playerName,
-        error: errorMessage,
-        timestamp: new Date().toISOString()
+        category,
+        success,
+        errorMessage,
+        targetServer,
+        isTemporary: userGameInfo.isTemporary || false
       });
 
-      const failedEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, errorMessage);
-      await executingMessage.edit({ embeds: [failedEmbed] });
+    } catch (error) {
+      logService.error('Error executing donation:', error);
+      
+      try {
+        const errorEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, error.message);
+        await message.channel.send({ embeds: [errorEmbed] });
+      } catch (sendError) {
+        console.error('Failed to send error message:', sendError);
+      }
     }
+  }
 
-    logService.logTopupEvent(success ? 'completed' : 'failed', message.author.id, {
-      ticketId: ticketData.ticketId,
-      category,
-      success,
-      errorMessage,
-      targetServer,
-      playerOnline: playerStatus.isOnline
-    });
-
-  } catch (error) {
-    logService.error('Error executing donation:', error);
-    
+  // เพิ่ม method ใหม่สำหรับส่ง webhook
+  async sendDonationWebhook(donationData) {
     try {
-      const errorEmbed = EmbedBuilders.createDonationFailedEmbed(ticketData, error.message);
-      await message.channel.send({ embeds: [errorEmbed] });
-    } catch (sendError) {
-      console.error('Failed to send error message:', sendError);
+      const webhookService = (await import('../services/webhookService.js')).default;
+      const result = await webhookService.sendDonationNotification(donationData);
+      
+      if (result.success) {
+        console.log('✅ Donation webhook sent successfully');
+      } else {
+        console.warn('⚠️ Donation webhook failed:', result.error || result.reason);
+      }
+    } catch (error) {
+      console.error('❌ Error sending donation webhook:', error);
     }
   }
-}
-
-// เพิ่ม method ใหม่สำหรับส่ง webhook
-async sendDonationWebhook(donationData) {
-  try {
-    const webhookService = (await import('../services/webhookService.js')).default;
-    const result = await webhookService.sendDonationNotification(donationData);
-    
-    if (result.success) {
-      console.log('✅ Donation webhook sent successfully');
-    } else {
-      console.warn('⚠️ Donation webhook failed:', result.error || result.reason);
-    }
-  } catch (error) {
-    console.error('❌ Error sending donation webhook:', error);
-  }
-}
 
   async cancelDonation(interaction) {
     try {
@@ -838,6 +944,11 @@ async sendDonationWebhook(donationData) {
       // Update database
       await databaseService.updateTicketStatus(ticketData.ticketId, 'cancelled');
       this.activeTickets.delete(interaction.channel.id);
+
+      // ลบ temporary steam id ถ้ามี
+      if (ticketData.userGameInfo.isTemporary) {
+        this.temporarySteamIds.delete(interaction.user.id);
+      }
 
       const cancelEmbed = EmbedBuilders.createCancelDonationEmbed(ticketData.ticketId);
       await interaction.editReply({ embeds: [cancelEmbed] });
@@ -861,6 +972,15 @@ async sendDonationWebhook(donationData) {
         content: '❌ เกิดข้อผิดพลาดในการยกเลิก'
       });
     }
+  }
+
+  // ✅ เพิ่ม handler สำหรับปุ่ม temp_donate_*
+  async handleTempDonateButtons(interaction) {
+    const { customId } = interaction;
+    const category = customId.replace('temp_donate_', '');
+    
+    await interaction.deferReply({ ephemeral: true });
+    await this.showDonationCategory(interaction, category);
   }
 
   // เพิ่ม method สำหรับ slash commands
@@ -915,13 +1035,37 @@ async sendDonationWebhook(donationData) {
       TicketManager.cleanupExpiredTickets(this.activeTickets, this.client);
     }, 1800000);
     
+    // ✅ เพิ่มการทำความสะอาด temporary steam IDs ทุก 1 ชั่วโมง
+    setInterval(() => {
+      this.cleanupTemporarySteamIds();
+    }, 3600000);
+    
     console.log('🔄 NEXArk periodic tasks started');
+  }
+
+  // ✅ เพิ่ม method สำหรับทำความสะอาด temporary steam IDs
+  cleanupTemporarySteamIds() {
+    const now = Date.now();
+    const maxAge = 3600000; // 1 hour
+    let cleanedCount = 0;
+
+    for (const [userId, data] of this.temporarySteamIds.entries()) {
+      if (now - data.timestamp > maxAge) {
+        this.temporarySteamIds.delete(userId);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      console.log(`🧹 Cleaned up ${cleanedCount} expired temporary Steam IDs`);
+    }
   }
 
   async shutdown() {
     console.log('🛑 NEXArk Topup System shutting down...');
     this.activeTickets.clear();
     this.userCooldowns.clear();
+    this.temporarySteamIds.clear(); // ✅ เพิ่มการล้าง temporary steam IDs
     console.log('✅ NEXArk Topup System shutdown complete');
   }
 }
