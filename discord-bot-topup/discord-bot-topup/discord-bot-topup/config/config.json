@@ -1,13 +1,17 @@
 {
   "bot": {
-    "token": "YOUR_DISCORD_BOT_TOKEN",
-    "client_id": "YOUR_BOT_CLIENT_ID"
+    "token": "",
+    "client_id": ""
+  },
+  "channels": {
+    "menu_channel_id": "",
+    "scoreboard_channel_id": ""
   },
   "database": {
-    "host": "localhost",
-    "user": "root",
-    "password": "your_password",
-    "database": "discord_bot",
+    "host": "",
+    "user": "",
+    "password": "",
+    "database": "",
     "port": 3306,
     "charset": "utf8mb4",
     "connectionLimit": 10,
@@ -15,46 +19,261 @@
     "timeout": 60000,
     "reconnect": true
   },
-  "rcon": {
-    "host": "localhost",
-    "port": 27015,
-    "password": "your_rcon_password",
-    "enabled": false
+  "rcon_servers": {
+    "Ragnarok": {
+      "host": "",
+      "port": 32315,
+      "password": "",
+      "enabled": true,
+      "display_name": "Ragnarok Server"
+    },
+    "TheIsland": {
+      "host": "",
+      "port": 32400,
+      "password": "",
+      "enabled": true,
+      "display_name": "The Island Server"
+    }
+  },
+  "discord_webhook": {
+    "enabled": true,
+    "donation_webhook_url": "",
+    "embed_color": "#00FF00",
+    "username": "NEXArk Donation Bot",
+    "avatar_url": "https://cdn.discordapp.com/avatars/1382017343365841007/avatar.png"
   },
   "easyslip": {
-    "api_key": "YOUR_EASYSLIP_API_KEY",
+    "api_key": "",
     "api_url": "https://developer.easyslip.com/api/v1/verify",
-    "enabled": false
+    "enabled": true
   },
-  "packages": [
-    {
-      "id": "package1",
-      "name": "Package Basic",
-      "price": 5,
-      "description": "Basic package with starter items",
-      "rcon_commands": [
-        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'\" 100 0 0",
-        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'\" 100 0 0",
-        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'\" 100 0 0"
-      ]
-    },
-    {
-      "id": "package2", 
-      "name": "Package Premium",
-      "price": 5,
-      "description": "Premium package with advanced items",
-      "rcon_commands": [
-        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotChest.PrimalItemArmor_RiotChest'\" 1 0 0",
-        "GiveItemToPlayer {steam64} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotPants.PrimalItemArmor_RiotPants'\" 1 0 0"
-      ]
-    }
-  ],
+  "donation_categories": {
+    "points": [
+      {
+        "id": "points_100",
+        "name": "100 พ้อย",
+        "points": 98,
+        "price": 1,
+        "description": "รับ 100 พ้อยสำหรับใช้ในเกม"
+      },
+      {
+        "id": "points_500",
+        "name": "500 พ้อย",
+        "points": 500,
+        "price": 20,
+        "description": "รับ 500 พ้อยสำหรับใช้ในเกม"
+      },
+      {
+        "id": "points_1000",
+        "name": "1000 พ้อย",
+        "points": 1000,
+        "price": 35,
+        "description": "รับ 1000 พ้อยสำหรับใช้ในเกม"
+      },
+      {
+        "id": "points_2500",
+        "name": "2500 พ้อย",
+        "points": 2500,
+        "price": 80,
+        "description": "รับ 2500 พ้อยสำหรับใช้ในเกม"
+      },
+      {
+        "id": "points_5000",
+        "name": "5000 พ้อย",
+        "points": 5000,
+        "price": 150,
+        "description": "รับ 5000 พ้อยสำหรับใช้ในเกม"
+      }
+    ],
+    "ranks": [
+      {
+        "id": "rank_vip",
+        "name": "ยศ VIP",
+        "rank": "VIP",
+        "price": 1,
+        "description": "ได้รับยศ VIP พร้อมสิทธิพิเศษต่างๆ",
+        "rcon_commands": [
+          "Permission.Add {steam64} Reaper"
+        ]
+      },
+      {
+        "id": "rank_premium",
+        "name": "ยศ Premium",
+        "rank": "Premium",
+        "price": 100,
+        "description": "ได้รับยศ Premium พร้อมสิทธิพิเศษมากมาย",
+        "rcon_commands": [
+          "addgroup {steam64} Premium"
+        ]
+      },
+      {
+        "id": "rank_legend",
+        "name": "ยศ Legend",
+        "rank": "Legend",
+        "price": 200,
+        "description": "ได้รับยศ Legend สิทธิพิเศษสูงสุด",
+        "rcon_commands": [
+          "addgroup {steam64} Legend"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "id": "item_element",
+        "name": "Element (100x)",
+        "price": 1,
+        "description": "ได้รับ Element 100 ชิ้น",
+        "items": [
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'",
+            "quantity": 100,
+            "quality": 0,
+            "blueprintType": 0
+          }
+        ]
+      },
+      {
+        "id": "item_riot_armor",
+        "name": "ชุดเกราะ Riot",
+        "price": 25,
+        "description": "ได้รับชุดเกราะ Riot ครบเซต",
+        "items": [
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotChest.PrimalItemArmor_RiotChest'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotPants.PrimalItemArmor_RiotPants'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotHelmet.PrimalItemArmor_RiotHelmet'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotGloves.PrimalItemArmor_RiotGloves'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotBoots.PrimalItemArmor_RiotBoots'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          }
+        ]
+      },
+      {
+        "id": "item_tek_armor",
+        "name": "ชุดเกราะ Tek",
+        "price": 75,
+        "description": "ได้รับชุดเกราะ Tek ครบเซต",
+        "items": [
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Tek/PrimalItemArmor_TekChest.PrimalItemArmor_TekChest'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Tek/PrimalItemArmor_TekPants.PrimalItemArmor_TekPants'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Tek/PrimalItemArmor_TekHelmet.PrimalItemArmor_TekHelmet'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Tek/PrimalItemArmor_TekGloves.PrimalItemArmor_TekGloves'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Items/Armor/Tek/PrimalItemArmor_TekBoots.PrimalItemArmor_TekBoots'",
+            "quantity": 1,
+            "quality": 0,
+            "blueprintType": 0
+          }
+        ]
+      },
+      {
+        "id": "item_starter_pack",
+        "name": "Starter Pack",
+        "price": 10,
+        "description": "แพ็คเริ่มต้นสำหรับผู้เล่นใหม่",
+        "items": [
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Element.PrimalItemResource_Element'",
+            "quantity": 50,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Metal.PrimalItemResource_Metal'",
+            "quantity": 1000,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Polymer.PrimalItemResource_Polymer'",
+            "quantity": 500,
+            "quality": 0,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemWeapon_AssaultRifle.PrimalItemWeapon_AssaultRifle'",
+            "quantity": 1,
+            "quality": 100,
+            "blueprintType": 0
+          }
+        ]
+      },
+      {
+        "id": "item_dino_pack",
+        "name": "Dino Pack",
+        "price": 50,
+        "description": "แพ็คไดโนเสาร์สำหรับการเดินทาง",
+        "items": [
+          {
+            "path": "Blueprint'/Game/PrimalEarth/Dinos/Argentavis/Argent_Character_BP.Argent_Character_BP'",
+            "quantity": 1,
+            "quality": 150,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/Dinos/Ankylo/Ankylo_Character_BP.Ankylo_Character_BP'",
+            "quantity": 1,
+            "quality": 150,
+            "blueprintType": 0
+          },
+          {
+            "path": "Blueprint'/Game/PrimalEarth/Dinos/Doedicurus/Doed_Character_BP.Doed_Character_BP'",
+            "quantity": 1,
+            "quality": 150,
+            "blueprintType": 0
+          }
+        ]
+      }
+    ]
+  },
   "qr_code": {
     "payment_info": {
       "bank_name": "ธนาคารกสิกรไทย",
       "bank_code": "KBank",
-      "account_number": "0678195405",
-      "account_name": "นาย ประธาน นิลสนธิ์",
+      "account_number": "",
+      "account_name": "",
       "strict_validation": true
     }
   },
@@ -65,6 +284,7 @@
     "cleanup_interval_hours": 24,
     "max_tickets_per_user": 3,
     "slip_verification_timeout": 300000,
-    "ticket_cleanup_timeout": 3600000
+    "ticket_cleanup_timeout": 3600000,
+    "scoreboard_update_interval": 300000
   }
 }
