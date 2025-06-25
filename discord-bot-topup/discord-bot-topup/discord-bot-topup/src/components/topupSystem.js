@@ -1,4 +1,4 @@
-// src/components/topupSystem.js (Refactored)
+// src/components/topupSystem.js (ปรับ logic ใหม่)
 import { 
   ActionRowBuilder, 
   ButtonBuilder, 
@@ -13,7 +13,6 @@ import slipVerification from "./slipVerification.js";
 import logService from "../services/logService.js";
 import configService from "../services/configService.js";
 
-// Import new handlers and utilities
 import donationHandler from "../handlers/donationHandler.js";
 import ticketHandler from "../handlers/ticketHandler.js";
 import BrandUtils from "../utils/brandUtils.js";
@@ -73,7 +72,6 @@ class TopupSystem {
         throw new Error(`Menu channel not found: ${menuChannelId}`);
       }
 
-      // Clear old messages
       await this.clearOldMessages(channel);
       await this.sendMainMenu(channel);
       
@@ -103,18 +101,15 @@ class TopupSystem {
         new ButtonBuilder()
           .setCustomId('donate_points')
           .setLabel('💰 โดเนทพ้อย')
-          .setStyle(ButtonStyle.Success)
-          .setEmoji('💎'),
+          .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId('donate_ranks')
           .setLabel('👑 โดเนทยศ')
-          .setStyle(ButtonStyle.Primary)
-          .setEmoji('⭐'),
+          .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId('donate_items')
           .setLabel('🎁 โดเนทไอเทม')
           .setStyle(ButtonStyle.Secondary)
-          .setEmoji('🎪')
       );
 
     await channel.send({
@@ -123,12 +118,11 @@ class TopupSystem {
     });
   }
 
-  // src/components/topupSystem.js
-// แก้ไข method handleButtonInteraction
+  // ✅ ปรับ handleButtonInteraction ใหม่
+  // src/components/topupSystem.js - แก้ไขส่วน handleButtonInteraction
 
 async handleButtonInteraction(interaction) {
   try {
-    // Check cooldown
     if (!ValidationHelper.checkCooldown(this.userCooldowns, interaction.user.id)) {
       return await ResponseHelper.safeReply(
         interaction, 
@@ -137,50 +131,321 @@ async handleButtonInteraction(interaction) {
     }
 
     ValidationHelper.setCooldown(this.userCooldowns, interaction.user.id);
-
     const { customId } = interaction;
 
-    // ✅ แก้ไขส่วนนี้ - เพิ่มการ handle cancel_donation ที่มี ticketId
+    // Handle cancel donation
     if (customId.startsWith('cancel_donation')) {
       await ResponseHelper.safeDefer(interaction);
       await this.cancelDonation(interaction);
       return;
     }
 
-    switch (customId) {
-      case 'donate_points':
-      case 'donate_ranks':
-      case 'donate_items':
-        await ResponseHelper.safeDefer(interaction);
-        const category = customId.replace('donate_', '');
-        await this.showDonationCategory(interaction, category);
-        break;
-
-      case 'input_steam_id':
-        await this.showSteamIdModal(interaction);
-        break;
-        
-      default:
-        if (customId.startsWith('select_donation_')) {
-          await ResponseHelper.safeDefer(interaction);
-          await this.handleDonationSelection(interaction);
-        } else if (customId.startsWith('temp_donate_')) {
-          await ResponseHelper.safeDefer(interaction);
-          const tempCategory = customId.replace('temp_donate_', '');
-          await this.showDonationCategory(interaction, tempCategory);
-        } else {
-          await ResponseHelper.safeReply(
-            interaction, 
-            '❌ ปุ่มนี้ไม่รองรับหรือหมดอายุแล้ว'
-          );
-        }
-        break;
+    // ✅ เพิ่ม case สำหรับ input_steam_id
+    if (customId === 'input_steam_id') {
+      await this.showSteamIdModal(interaction);
+      return;
     }
+
+    // Handle main category buttons
+    if (customId.startsWith('donate_')) {
+      await ResponseHelper.safeDefer(interaction);
+      const category = customId.replace('donate_', '');
+      await this.handleCategorySelection(interaction, category);
+      return;
+    }
+
+    // Handle method selection buttons
+    if (customId.startsWith('use_linked_')) {
+      await ResponseHelper.safeDefer(interaction);
+      const category = customId.replace('use_linked_', '');
+      await this.showDonationCategoryLinked(interaction, category);
+      return;
+    }
+
+    if (customId.startsWith('use_manual_')) {
+      const category = customId.replace('use_manual_', '');
+      await this.showSteamIdModal(interaction, category);
+      return;
+    }
+
+    // Handle donation selection
+    if (customId.startsWith('select_donation_')) {
+      await ResponseHelper.safeDefer(interaction);
+      await this.handleDonationSelection(interaction);
+      return;
+    }
+
+    // Handle temporary donation (after manual Steam ID input)
+    if (customId.startsWith('temp_donate_')) {
+      await ResponseHelper.safeDefer(interaction);
+      const tempCategory = customId.replace('temp_donate_', '');
+      await this.showDonationCategoryTemporary(interaction, tempCategory);
+      return;
+    }
+
+    // Default case
+    await ResponseHelper.safeReply(
+      interaction, 
+      '❌ ปุ่มนี้ไม่รองรับหรือหมดอายุแล้ว'
+    );
+
   } catch (error) {
     await ErrorHandler.handleInteractionError(error, interaction, 'Button Interaction');
   }
 }
 
+  // ✅ ฟังก์ชันใหม่: จัดการการเลือก category
+  async handleCategorySelection(interaction, category) {
+    try {
+      const userId = interaction.user.id;
+      
+      // ตรวจสอบว่า user มี link หรือไม่
+      const userGameInfo = await databaseService.getUserGameInfo(userId);
+      
+      if (userGameInfo.isLinked) {
+        // ถ้ามี link แล้ว ให้เลือกว่าจะใช้ link หรือกรอกใหม่
+        await this.showInputMethodChoice(interaction, category);
+      } else {
+        // ถ้าไม่มี link ให้กรอก Steam ID
+        await this.showNoLinkEmbed(interaction);
+      }
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Category Selection');
+    }
+  }
+
+  // ✅ ฟังก์ชันใหม่: แสดงตัวเลือกวิธีการกรอกข้อมูล
+  async showInputMethodChoice(interaction, category) {
+    const embed = EmbedBuilders.createChooseInputMethodEmbed(category);
+    const buttons = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`use_linked_${category}`)
+          .setLabel('🔗 ใช้ข้อมูลที่เชื่อมต่อไว้')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`use_manual_${category}`)
+          .setLabel('🆔 กรอก Steam64 ID ใหม่')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [buttons]
+    });
+  }
+
+  // ✅ ฟังก์ชันใหม่: แสดง category โดยใช้ข้อมูลที่ link ไว้
+  async showDonationCategoryLinked(interaction, category) {
+    try {
+      const userId = interaction.user.id;
+      const userGameInfo = await databaseService.getUserGameInfo(userId);
+      
+      if (!userGameInfo.isLinked) {
+        return await interaction.editReply({
+          content: '❌ ไม่พบข้อมูลการเชื่อมต่อ'
+        });
+      }
+
+      await this.showDonationCategory(interaction, category, userGameInfo, false);
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Show Linked Category');
+    }
+  }
+
+  // ✅ ฟังก์ชันใหม่: แสดง category โดยใช้ Steam ID ชั่วคราว
+  async showDonationCategoryTemporary(interaction, category) {
+    try {
+      const userId = interaction.user.id;
+      const tempData = this.temporarySteamIds.get(userId);
+      
+      if (!tempData) {
+        return await interaction.editReply({
+          content: '❌ ไม่พบข้อมูล Steam ID ชั่วคราว กรุณากรอกใหม่'
+        });
+      }
+
+      const userGameInfo = {
+        isLinked: false,
+        steam64: tempData.steamId,
+        characterId: null,
+        userData: null,
+        playerData: null,
+        isTemporary: true
+      };
+
+      await this.showDonationCategory(interaction, category, userGameInfo, true);
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Show Temporary Category');
+    }
+  }
+
+  async showSteamIdModal(interaction, category = null) {
+    const modal = new ModalBuilder()
+      .setCustomId(category ? `steam_id_modal_${category}` : 'steam_id_modal')
+      .setTitle('🆔 กรอก Steam64 ID');
+
+    const steamIdInput = new TextInputBuilder()
+      .setCustomId('steam_id_input')
+      .setLabel('Steam64 ID (17 ตัวเลข)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('76561198000000000')
+      .setRequired(true)
+      .setMinLength(17)
+      .setMaxLength(17);
+
+    const firstRow = new ActionRowBuilder().addComponents(steamIdInput);
+    modal.addComponents(firstRow);
+
+    await interaction.showModal(modal);
+  }
+
+  async handleModalSubmit(interaction) {
+    try {
+      if (interaction.customId.startsWith('steam_id_modal')) {
+        await this.handleSteamIdSubmit(interaction);
+      } else {
+        await ResponseHelper.safeReply(
+          interaction, 
+          '❌ Modal นี้ไม่รองรับหรือหมดอายุแล้ว'
+        );
+      }
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Modal Submit');
+    }
+  }
+
+  async handleSteamIdSubmit(interaction) {
+    try {
+      await ResponseHelper.safeDefer(interaction);
+
+      const steamId = interaction.fields.getTextInputValue('steam_id_input');
+      const userId = interaction.user.id;
+
+      if (!ValidationHelper.validateSteam64(steamId)) {
+        return await interaction.editReply({
+          content: '❌ Steam64 ID ไม่ถูกต้อง กรุณากรอกเลข 17 หลักที่ขึ้นต้นด้วย 7656119'
+        });
+      }
+
+      // บันทึก Steam ID ชั่วคราว
+      this.temporarySteamIds.set(userId, {
+        steamId: steamId,
+        timestamp: Date.now()
+      });
+
+      // ตรวจสอบว่ามี category ใน customId หรือไม่
+      const customIdParts = interaction.customId.split('_');
+      const category = customIdParts.length >= 4 ? customIdParts[3] : null;
+
+      if (category) {
+        // ถ้ามี category ไปต่อเลย
+        await this.showDonationCategoryTemporary(interaction, category);
+      } else {
+        // ถ้าไม่มี category ให้เลือก
+        await interaction.editReply({
+          content: `✅ บันทึก Steam64 ID เรียบร้อยแล้ว: \`${steamId}\`\n\n🎯 กรุณาเลือกหมวดหมู่ที่ต้องการ:`,
+          components: [
+            new ActionRowBuilder()
+              .addComponents(
+                new ButtonBuilder()
+                  .setCustomId('temp_donate_points')
+                  .setLabel('💰 โดเนทพ้อย')
+                  .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                  .setCustomId('temp_donate_ranks')
+                  .setLabel('👑 โดเนทยศ')
+                  .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                  .setCustomId('temp_donate_items')
+                  .setLabel('🎁 โดเนทไอเทม')
+                  .setStyle(ButtonStyle.Secondary)
+              )
+          ]
+        });
+      }
+
+      DebugHelper.log('Temporary Steam ID saved', { userId, steamId, category });
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Steam ID Submit');
+    }
+  }
+
+  async showNoLinkEmbed(interaction) {
+    const config = configService.getConfig();
+    const linkChannelId = config.channels?.link_discord_channel_id;
+    const embed = EmbedBuilders.createNoLinkEmbed(linkChannelId);
+    
+    const linkButtons = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('input_steam_id')
+          .setLabel('🆔 กรอก Steam64 ID')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+    return await interaction.editReply({ 
+      embeds: [embed],
+      components: [linkButtons]
+    });
+  }
+
+  // ✅ ปรับ showDonationCategory
+  async showDonationCategory(interaction, category, userGameInfo, isTemporary) {
+    try {
+      // ตรวจสอบ ticket limit
+      const activeDonationTickets = await databaseService.getActiveDonationTickets(interaction.user.id);
+      if (!ValidationHelper.validateTicketLimit(activeDonationTickets, 3)) {
+        const embed = EmbedBuilders.createMaxTicketEmbed(activeDonationTickets, 3);
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      // ดึงรายการ donations
+      const donations = donationHandler.getDonationsByCategory(category);
+      if (donations.length === 0) {
+        return await interaction.editReply({
+          content: `❌ ไม่พบรายการ${BrandUtils.getCategoryName(category)}ในระบบ`
+        });
+      }
+
+      // สร้าง embed และ select menu
+      const embed = isTemporary ? 
+        EmbedBuilders.createTemporarySteamIdEmbed(category, userGameInfo.steam64, activeDonationTickets, 3, donations) :
+        EmbedBuilders.createCategorySelectionEmbed(category, userGameInfo, activeDonationTickets, 3, donations);
+
+      const selectMenu = this.createDonationSelectMenu(category, donations, isTemporary);
+
+      await interaction.editReply({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(selectMenu)]
+      });
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Show Donation Category');
+    }
+  }
+
+  createDonationSelectMenu(category, donations, isTemporary = false) {
+    const suffix = isTemporary ? '_temp' : '';
+    
+    return new StringSelectMenuBuilder()
+      .setCustomId(`select_donation_${category}${suffix}`)
+      .setPlaceholder(`🔥 เลือก${BrandUtils.categoryDisplayNames[category]}ที่ต้องการ`)
+      .addOptions(
+        donations.slice(0, 25).map(item => ({ 
+          label: item.name.substring(0, 100),
+          description: `💰 ${item.price} บาท | ${item.description?.substring(0, 100) || 'ไม่มีรายละเอียด'}`,
+          value: item.id,
+          emoji: BrandUtils.categoryIcons[category]
+        }))
+      );
+  }
+
+  // ส่วนที่เหลือของ class ยังเหมือนเดิม...
   async handleSelectMenuInteraction(interaction) {
     try {
       if (!ValidationHelper.checkCooldown(this.userCooldowns, interaction.user.id)) {
@@ -206,208 +471,6 @@ async handleButtonInteraction(interaction) {
     }
   }
 
-  async handleModalSubmit(interaction) {
-    try {
-      if (interaction.customId === 'steam_id_modal') {
-        await this.handleSteamIdSubmit(interaction);
-      } else {
-        await ResponseHelper.safeReply(
-          interaction, 
-          '❌ Modal นี้ไม่รองรับหรือหมดอายุแล้ว'
-        );
-      }
-    } catch (error) {
-      await ErrorHandler.handleInteractionError(error, interaction, 'Modal Submit');
-    }
-  }
-
-  async showSteamIdModal(interaction) {
-    const modal = new ModalBuilder()
-      .setCustomId('steam_id_modal')
-      .setTitle('🆔 กรอก Steam64 ID');
-
-    const steamIdInput = new TextInputBuilder()
-      .setCustomId('steam_id_input')
-      .setLabel('Steam64 ID (17 ตัวเลข)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('76561198000000000')
-      .setRequired(true)
-      .setMinLength(17)
-      .setMaxLength(17);
-
-    const firstRow = new ActionRowBuilder().addComponents(steamIdInput);
-    modal.addComponents(firstRow);
-
-    await interaction.showModal(modal);
-  }
-
-  async handleSteamIdSubmit(interaction) {
-    try {
-      await ResponseHelper.safeDefer(interaction);
-
-      const steamId = interaction.fields.getTextInputValue('steam_id_input');
-      const userId = interaction.user.id;
-
-      if (!ValidationHelper.validateSteam64(steamId)) {
-        return await interaction.editReply({
-          content: '❌ Steam64 ID ไม่ถูกต้อง กรุณากรอกเลข 17 หลักที่ขึ้นต้นด้วย 7656119'
-        });
-      }
-
-      // บันทึก Steam ID ชั่วคราว
-      this.temporarySteamIds.set(userId, {
-        steamId: steamId,
-        timestamp: Date.now()
-      });
-
-      // แสดงเมนูหมวดหมู่
-      await interaction.editReply({
-        content: `✅ บันทึก Steam64 ID เรียบร้อยแล้ว: \`${steamId}\`\n\n🎯 กรุณาเลือกหมวดหมู่ที่ต้องการ:`,
-        components: [
-          new ActionRowBuilder()
-            .addComponents(
-              new ButtonBuilder()
-                .setCustomId('temp_donate_points')
-                .setLabel('💰 โดเนทพ้อย')
-                .setStyle(ButtonStyle.Success)
-                .setEmoji('💎'),
-              new ButtonBuilder()
-                .setCustomId('temp_donate_ranks')
-                .setLabel('👑 โดเนทยศ')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('⭐'),
-              new ButtonBuilder()
-                .setCustomId('temp_donate_items')
-                .setLabel('🎁 โดเนทไอเทม')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('🎪')
-            )
-        ]
-      });
-
-      DebugHelper.log('Temporary Steam ID saved', { userId, steamId });
-
-    } catch (error) {
-      await ErrorHandler.handleInteractionError(error, interaction, 'Steam ID Submit');
-    }
-  }
-
-  async showDonationCategory(interaction, category) {
-    try {
-      const userId = interaction.user.id;
-      
-      // ตรวจสอบ user game info
-      let userGameInfo = await this.getUserGameInfo(userId, interaction.customId);
-      
-      if (!userGameInfo || (!userGameInfo.isLinked && !userGameInfo.isTemporary)) {
-        return await this.showNoLinkEmbed(interaction);
-      }
-
-      // ตรวจสอบ ticket limit
-      const activeDonationTickets = await databaseService.getActiveDonationTickets(userId);
-      if (!ValidationHelper.validateTicketLimit(activeDonationTickets, 3)) {
-        const embed = EmbedBuilders.createMaxTicketEmbed(activeDonationTickets, 3);
-        return await interaction.editReply({ embeds: [embed] });
-      }
-
-      // ดึงรายการ donations
-      const donations = donationHandler.getDonationsByCategory(category);
-      if (donations.length === 0) {
-        return await interaction.editReply({
-          content: `❌ ไม่พบรายการ${BrandUtils.getCategoryName(category)}ในระบบ`
-        });
-      }
-
-      // สร้าง select menu และ embed
-      const selectMenu = this.createDonationSelectMenu(category, donations, userGameInfo.isTemporary);
-      const embed = this.createCategoryEmbed(category, userGameInfo, activeDonationTickets, donations);
-
-      await interaction.editReply({
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(selectMenu)]
-      });
-
-    } catch (error) {
-      await ErrorHandler.handleInteractionError(error, interaction, 'Show Donation Category');
-    }
-  }
-
-  async getUserGameInfo(userId, customId) {
-    // ตรวจสอบว่าเป็น temporary หรือไม่
-    if (customId && customId.startsWith('temp_')) {
-      const tempData = this.temporarySteamIds.get(userId);
-      if (tempData) {
-        return {
-          isLinked: false,
-          steam64: tempData.steamId,
-          characterId: null,
-          userData: null,
-          playerData: null,
-          isTemporary: true
-        };
-      }
-    }
-
-    // ถ้าไม่ใช่ temporary ให้ตรวจสอบ link ปกติ
-    return await databaseService.getUserGameInfo(userId);
-  }
-
-  async showNoLinkEmbed(interaction) {
-    const config = configService.getConfig();
-    const linkChannelId = config.channels?.link_discord_channel_id;
-    const embed = EmbedBuilders.createNoLinkEmbed(linkChannelId);
-    
-    const linkButtons = new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId('input_steam_id')
-          .setLabel('🆔 กรอก Steam64 ID')
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji('⚡')
-      );
-
-    return await interaction.editReply({ 
-      embeds: [embed],
-      components: [linkButtons]
-    });
-  }
-
-  createDonationSelectMenu(category, donations, isTemporary = false) {
-    const suffix = isTemporary ? '_temp' : '';
-    
-    return new StringSelectMenuBuilder()
-      .setCustomId(`select_donation_${category}${suffix}`)
-      .setPlaceholder(`🔥 เลือก${BrandUtils.categoryDisplayNames[category]}ที่ต้องการ ${BrandUtils.categoryIcons[category]}`)
-      .addOptions(
-        donations.slice(0, 25).map(item => ({ 
-          label: item.name.substring(0, 100),
-          description: `💰 ${item.price} บาท | ${item.description?.substring(0, 100) || 'ไม่มีรายละเอียด'}`,
-          value: item.id,
-          emoji: BrandUtils.categoryIcons[category]
-        }))
-      );
-  }
-
-  createCategoryEmbed(category, userGameInfo, activeDonationTickets, donations) {
-    if (userGameInfo.isTemporary) {
-      return EmbedBuilders.createTemporarySteamIdEmbed(
-        category, 
-        userGameInfo.steam64, 
-        activeDonationTickets, 
-        3, 
-        donations
-      );
-    } else {
-      return EmbedBuilders.createCategorySelectionEmbed(
-        category, 
-        userGameInfo, 
-        activeDonationTickets, 
-        3, 
-        donations
-      );
-    }
-  }
-
   async handleDonationSelection(interaction) {
     try {
       // Parse interaction data
@@ -424,7 +487,7 @@ async handleButtonInteraction(interaction) {
       }
 
       // Get user game info
-      const userGameInfo = await this.getUserGameInfo(userId, interaction.customId);
+      const userGameInfo = await this.getUserGameInfo(userId, isTemporary);
       
       // Validate donation data
       const validation = donationHandler.validateDonationData(category, donationItem, userGameInfo);
@@ -463,6 +526,24 @@ async handleButtonInteraction(interaction) {
     }
   }
 
+  async getUserGameInfo(userId, isTemporary) {
+    if (isTemporary) {
+      const tempData = this.temporarySteamIds.get(userId);
+      if (tempData) {
+        return {
+          isLinked: false,
+          steam64: tempData.steamId,
+          characterId: null,
+          userData: null,
+          playerData: null,
+          isTemporary: true
+        };
+      }
+    }
+
+    return await databaseService.getUserGameInfo(userId);
+  }
+
   parseDonationInteraction(interaction) {
     const customIdParts = interaction.customId.split('_');
     const isTemporary = customIdParts.length === 4 && customIdParts[3] === 'temp';
@@ -471,6 +552,7 @@ async handleButtonInteraction(interaction) {
     return { category, isTemporary };
   }
 
+  // ส่วนที่เหลือของ class (handleSlipSubmission, cancelDonation, etc.) ยังเหมือนเดิม
   async handleSlipSubmission(message) {
     try {
       const ticketData = ticketHandler.getTicketData(message.channel.id);
@@ -504,66 +586,65 @@ async handleButtonInteraction(interaction) {
     }
   }
 
-async processSlipVerification(message, ticketData, attachment) {
-  // Send processing message
-  const processingEmbed = EmbedBuilders.createProcessingSlipEmbed(ticketData, attachment);
-  const processingMessage = await message.reply({ embeds: [processingEmbed] });
+  async processSlipVerification(message, ticketData, attachment) {
+    // Send processing message
+    const processingEmbed = EmbedBuilders.createProcessingSlipEmbed(ticketData, attachment);
+    const processingMessage = await message.reply({ embeds: [processingEmbed] });
 
-  try {
-    // Process slip verification
-    const config = configService.getConfig();
-    const bankInfo = config.qr_code.payment_info;
-    
-    const verificationResult = await slipVerification.processSlipImage(
-      attachment,
-      message.author.id,
-      ticketData.donationItem.price,
-      bankInfo
-    );
-
-    if (verificationResult.success) {
-      // ✅ เพิ่ม slip image URL
-      verificationResult.slipImageUrl = attachment.url;
-
-      // Update processing message
-      const successEmbed = EmbedBuilders.createSlipVerificationSuccessEmbed(
-        verificationResult.data, 
-        ticketData
+    try {
+      // Process slip verification
+      const config = configService.getConfig();
+      const bankInfo = config.qr_code.payment_info;
+      
+      const verificationResult = await slipVerification.processSlipImage(
+        attachment,
+        message.author.id,
+        ticketData.donationItem.price,
+        bankInfo
       );
-      await processingMessage.edit({ embeds: [successEmbed] });
 
-      // Update database
-      const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
-      if (topupLog) {
-        await databaseService.updateTopupStatus(topupLog.id, 'verified', {
-          verificationData: verificationResult.data,
-          slipImageUrl: attachment.url
+      if (verificationResult.success) {
+        verificationResult.slipImageUrl = attachment.url;
+
+        // Update processing message
+        const successEmbed = EmbedBuilders.createSlipVerificationSuccessEmbed(
+          verificationResult.data, 
+          ticketData
+        );
+        await processingMessage.edit({ embeds: [successEmbed] });
+
+        // Update database
+        const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
+        if (topupLog) {
+          await databaseService.updateTopupStatus(topupLog.id, 'verified', {
+            verificationData: verificationResult.data,
+            slipImageUrl: attachment.url
+          });
+        }
+
+        // Execute donation
+        await this.executeDonation(message, ticketData, verificationResult);
+
+      } else {
+        // Verification failed
+        await processingMessage.edit({
+          embeds: [EmbedBuilders.createErrorEmbed(
+            '❌ การตรวจสอบสลิปล้มเหลว',
+            verificationResult.error || 'ไม่สามารถตรวจสอบสลิปได้'
+          )]
         });
       }
 
-      // Execute donation
-      await this.executeDonation(message, ticketData, verificationResult);
-
-    } else {
-      // Verification failed
+    } catch (error) {
+      DebugHelper.error('Slip processing error:', error);
       await processingMessage.edit({
         embeds: [EmbedBuilders.createErrorEmbed(
-          '❌ การตรวจสอบสลิปล้มเหลว',
-          verificationResult.error || 'ไม่สามารถตรวจสอบสลิปได้'
+          '❌ เกิดข้อผิดพลาดในการประมวลผล',
+          'กรุณาลองส่งสลิปใหม่อีกครั้ง หรือติดต่อแอดมิน'
         )]
       });
     }
-
-  } catch (error) {
-    DebugHelper.error('Slip processing error:', error);
-    await processingMessage.edit({
-      embeds: [EmbedBuilders.createErrorEmbed(
-        '❌ เกิดข้อผิดพลาดในการประมวลผล',
-        'กรุณาลองส่งสลิปใหม่อีกครั้ง หรือติดต่อแอดมิน'
-      )]
-    });
   }
-}
 
   async executeDonation(message, ticketData, verificationResult) {
     try {
@@ -628,35 +709,34 @@ async processSlipVerification(message, ticketData, attachment) {
   }
 
   async cancelDonation(interaction) {
-  try {
-    await ticketHandler.cancelTicket(interaction);
-    
-    // ลบ temporary steam id ถ้ามี
-    const ticketData = ticketHandler.getTicketData(interaction.channel.id);
-    if (ticketData?.userGameInfo.isTemporary) {
-      this.temporarySteamIds.delete(interaction.user.id);
-    }
-
-    // ✅ เพิ่ม: ดึง ticketId จาก customId หรือจาก ticketData
-    let ticketId = 'unknown';
-    if (interaction.customId && interaction.customId.includes('_')) {
-      const parts = interaction.customId.split('_');
-      if (parts.length >= 3) {
-        ticketId = parts[2];
+    try {
+      await ticketHandler.cancelTicket(interaction);
+      
+      // ลบ temporary steam id ถ้ามี
+      const ticketData = ticketHandler.getTicketData(interaction.channel.id);
+      if (ticketData?.userGameInfo.isTemporary) {
+        this.temporarySteamIds.delete(interaction.user.id);
       }
-    } else if (ticketData) {
-      ticketId = ticketData.ticketId;
+
+      let ticketId = 'unknown';
+      if (interaction.customId && interaction.customId.includes('_')) {
+        const parts = interaction.customId.split('_');
+        if (parts.length >= 3) {
+          ticketId = parts[2];
+        }
+      } else if (ticketData) {
+        ticketId = ticketData.ticketId;
+      }
+
+      logService.logTopupEvent('cancelled', interaction.user.id, {
+        ticketId: ticketId,
+        customId: interaction.customId
+      });
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Cancel Donation');
     }
-
-    logService.logTopupEvent('cancelled', interaction.user.id, {
-      ticketId: ticketId,
-      customId: interaction.customId // เพิ่ม debug info
-    });
-
-  } catch (error) {
-    await ErrorHandler.handleInteractionError(error, interaction, 'Cancel Donation');
   }
-}
 
   async startPeriodicTasks() {
     // Cleanup expired tickets every 30 minutes

@@ -1,407 +1,218 @@
+// src/utils/embedBuilders.js (Full Code ที่แก้ไขแล้ว)
 import { EmbedBuilder } from 'discord.js';
 import BrandUtils from './brandUtils.js';
 import Helpers from './helpers.js';
 
 class EmbedBuilders {
+  // ✅ ปรับ Main Menu ให้เรียบง่าย
   static createMainMenuEmbed() {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.primary)
-      .setTitle('🌟 ระบบโดเนทและบริการ NEXArk')
+      .setTitle('🎮 ระบบโดเนทอัตโนมัติ')
       .setDescription(`
-        **🔥 ยินดีต้อนรับสู่ระบบโดเนทอัตโนมัติ 🔥**
+        **เลือกหมวดหมู่ที่ต้องการโดเนท:**
         
-        **🎯 บริการที่เปิดให้ใช้งาน:**
+        💰 **โดเนทพ้อย** - เติมพ้อยสำหรับใช้ในเกม
+        👑 **โดเนทยศ** - อัพเกรดยศของคุณ  
+        🎁 **โดเนทไอเทม** - รับไอเทมพิเศษ
         
-        💰 **โดเนทพ้อย**
-        • เติมพ้อยสำหรับใช้ในเกม
-        • รับพ้อยทันทีอัตโนมัติ
-        • ระบบตรวจสอบความปลอดภัย
-        
-        👑 **โดเนทยศ**
-        • อัพเกรดยศของคุณ
-        • สิทธิพิเศษมากมาย
-        • ระบบอัพเกรดอัตโนมัติ
-        
-        🎁 **โดเนทไอเทม**
-        • รับไอเทมพิเศษสุดเจ๋ง
-        • ไอเทม Exclusive หายาก
-        • ส่งตรงเข้าตัวละครทันที
+        📱 รองรับการชำระเงินผ่าน PromptPay
+        ⚡ ได้รับของทันทีอัตโนมัติ
       `)
       .setThumbnail(BrandUtils.brandIcon)
-      .setImage("https://image.api.playstation.com/cdn/JP0365/CUSA08806_00/D9W8V0pZd3Q36y4xD3x9HqwRqeoxX7oSYz9uA8Nyviev43ixO04rsXAsNh9OC14g.png")
-      .addFields(
-        {
-          name: '💎 ความปลอดภัย',
-          value: '✅ ระบบตรวจสอบอัตโนมัติ\n⚡ ได้รับของทันที\n🛡️ การันตีความน่าเชื่อถือ',
-          inline: true
-        },
-        {
-          name: '⚠️ ข้อควรระวัง',
-          value: '• ตรวจสอบข้อมูลการโอนให้ถูกต้อง\n• ห้ามแชร์สลิปให้ผู้อื่น\n• สลิปที่ใช้แล้วจะไม่สามารถใช้ซ้ำได้',
-          inline: false
-        }
-      )
-      .setFooter({ 
-        text: BrandUtils.brandFooter,
-        iconURL: BrandUtils.brandIcon
-      })
+      .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
-  // ✅ แก้ไข createNoLinkEmbed ให้มีปุ่มกรอก Steam ID
+  // ✅ ปรับ No Link Embed ให้ชัดเจน
   static createNoLinkEmbed(linkChannelId) {
     return new EmbedBuilder()
-      .setColor(BrandUtils.brandColors.error)
-      .setTitle('⚠️ ยังไม่ได้เชื่อมต่อบัญชี')
+      .setColor(BrandUtils.brandColors.warning)
+      .setTitle('🆔 กรอก Steam64 ID')
       .setDescription(`
         **คุณยังไม่ได้เชื่อมต่อบัญชี Discord กับเกม**
         
-        **📋 มี 2 วิธีในการใช้งาน:**
+        กรุณากรอก Steam64 ID เพื่อใช้งานระบบโดเนท
         
-        **🔗 วิธีที่ 1: เชื่อมต่อบัญชี (แนะนำ)**
-        • ไปที่ <#${linkChannelId}> เพื่อเชื่อมต่อบัญชี
-        • หรือติดต่อแอดมินเพื่อขอความช่วยเหลือ
-        • หลังเชื่อมต่อแล้วจะใช้งานได้สะดวกขึ้น
-        
-        **⚡ วิธีที่ 2: กรอก Steam64 ID (ชั่วคราว)**
-        • กดปุ่ม "กรอก Steam64 ID" ด้านล่าง
-        • ใส่ Steam64 ID ของคุณ
-        • สามารถใช้งานได้ทันทีแต่ต้องกรอกทุกครั้ง
+        📋 **วิธีหา Steam64 ID:**
+        • เปิด Steam Client
+        • คลิกขวาที่โปรไฟล์ > View Profile  
+        • ดู URL: steamcommunity.com/profiles/**17ตัวเลข**
+        • หรือใช้เว็บ https://steamid.io/
       `)
-      .setThumbnail('https://image.api.playstation.com/cdn/JP0365/CUSA08806_00/D9W8V0pZd3Q36y4xD3x9HqwRqeoxX7oSYz9uA8Nyviev43ixO04rsXAsNh9OC14g.png')
       .addFields(
         {
-          name: '🔍 วิธีหา Steam64 ID',
-          value: '• เปิดเกม Steam\n• คลิกขวาที่โปรไฟล์ > View Profile\n• ดู URL: steamcommunity.com/profiles/**17ตัวเลข**\n• หรือใช้เว็บ https://steamid.io/',
-          inline: false
-        },
-        {
-          name: '⚡ ประโยชน์หลังเชื่อมต่อ',
-          value: '✅ ไม่ต้องกรอก Steam ID ทุกครั้ง\n✅ รับไอเทมอัตโนมัติ\n✅ ตรวจสอบประวัติการทำรายการ\n✅ รับการสนับสนุนพิเศษ',
+          name: '💡 หลังจากโดเนท',
+          value: 'แนะนำให้เชื่อมต่อบัญชีเพื่อความสะดวกในครั้งต่อไป',
           inline: false
         }
       )
-      .setFooter({ 
-        text: BrandUtils.brandFooter,
-        iconURL: BrandUtils.brandIcon
-      })
+      .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
-  static createMaxTicketEmbed(activeDonationTickets, maxTickets) {
-    return new EmbedBuilder()
-      .setColor(BrandUtils.brandColors.warning)
-      .setTitle('🎫 Ticket เต็มแล้ว')
-      .setDescription(`
-        **คุณมี Donation Ticket ที่เปิดอยู่เกินจำนวนที่อนุญาต**
-        
-        🎫 **Ticket ที่เปิดอยู่:** \`${activeDonationTickets.length}/${maxTickets}\`
-        📊 **สถานะ:** ⚠️ เต็มแล้ว
-        ⏰ **สถานะระบบ:** 🟢 ปกติ
-      `)
-      .setThumbnail('https://via.placeholder.com/128x128/ffa726/ffffff?text=!')
-      .addFields(
-        {
-          name: '✅ วิธีแก้ไข',
-          value: '**1️⃣ ปิด Ticket เก่า**\n• ตรวจสอบ ticket ที่ไม่ใช้แล้ว\n• กดปุ่ม "❌ ยกเลิก" ใน ticket เก่า\n• รอให้ ticket ถูกปิดอัตโนมัติ',
-          inline: false
-        },
-        {
-          name: '⏳ รอการทำรายการเสร็จ',
-          value: '• หาก ticket กำลังประมวลผล\n• รอให้ระบบทำรายการเสร็จสิ้น\n• Ticket จะปิดอัตโนมัติ',
-          inline: false
-        },
-        {
-          name: '🔍 ตรวจสอบ Ticket ที่เปิดอยู่',
-          value: 'ดูรายการ ticket ในช่องที่มีชื่อขึ้นต้นด้วย:\n• \`topup-XXXXX\` - Donation Tickets',
-          inline: false
-        }
-      )
-      .setFooter({ 
-        text: `${BrandUtils.brandFooter} | 💡 เคล็ดลับ: Ticket จะปิดอัตโนมัติหลังทำรายการเสร็จ`,
-        iconURL: BrandUtils.brandIcon
-      })
-      .setTimestamp();
-  }
-
+  // ✅ ปรับ Category Selection ให้เรียบง่าย
   static createCategorySelectionEmbed(category, userGameInfo, activeDonationTickets, maxTickets, donations) {
     const categoryIcon = BrandUtils.categoryIcons[category];
     const categoryDisplayName = BrandUtils.categoryDisplayNames[category];
 
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.primary)
-      .setTitle(`${categoryIcon} เลือก${categoryDisplayName}ที่ต้องการ`)
+      .setTitle(`${categoryIcon} เลือก${categoryDisplayName}`)
       .setDescription(`
-        **🎯 กรุณาเลือก${categoryDisplayName}ที่ต้องการซื้อ**
+        **🔗 Steam64 ID:** \`${userGameInfo.steam64}\`
+        **🎫 Tickets:** ${activeDonationTickets.length}/${maxTickets}
         
-        🔗 **สถานะการเชื่อมต่อ:** ✅ เชื่อมต่อแล้ว
-        🆔 **Steam64 ID:** \`${userGameInfo.steam64}\`
-        ${userGameInfo.characterId ? `🎮 **Character ID:** \`${userGameInfo.characterId}\`` : '⚠️ **Character ID:** ไม่พบ (กรุณาเข้าเกมอย่างน้อย 1 ครั้ง)'}
-        
-        🎫 **Donation Tickets:** \`${activeDonationTickets.length}/${maxTickets}\`
-        📈 **สถานะ:** ${activeDonationTickets.length < maxTickets ? '🟢 พร้อมใช้งาน' : '🔴 เต็มแล้ว'}
+        เลือก${categoryDisplayName}ที่ต้องการจากเมนูด้านล่าง
       `)
-      .setThumbnail(BrandUtils.brandIcon)
       .addFields(
         {
-          name: `📦 รายการ${categoryDisplayName}ทั้งหมด`,
-          value: donations.slice(0, 3).map((item, index) => 
-            `**${index + 1}.** ${item.name}\n💰 ${Helpers.formatCurrency(item.price)} | ${item.description}`
-          ).join('\n\n') + (donations.length > 3 ? `\n\n*และอีก ${donations.length - 3} รายการ...*` : ''),
-          inline: false
-        },
-        {
-          name: '⚠️ ข้อปฏิบัติสำคัญ',
-          value: '✅ ตรวจสอบข้อมูลให้ถูกต้อง\n✅ โอนเงินตามจำนวนที่ระบุ\n✅ ถ่ายรูปสลิปให้ชัดเจน\n❌ ไม่แชร์สลิปให้ผู้อื่น',
+          name: `📦 รายการยอดนิยม`,
+          value: donations.slice(0, 3).map(item => 
+            `**${item.name}** - ${Helpers.formatCurrency(item.price)}`
+          ).join('\n') + (donations.length > 3 ? '\n*และอีกหลายรายการ...*' : ''),
           inline: false
         }
       )
-      .setFooter({ 
-        text: `${BrandUtils.brandFooter} | 💡 การทำรายการจะเสร็จสิ้นภายใน 1-5 นาที`,
-        iconURL: BrandUtils.brandIcon
-      })
+      .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
-  // ✅ เพิ่ม embed สำหรับแสดงหลังกรอก Steam ID
+  // ✅ ปรับ Temporary Steam ID Embed
   static createTemporarySteamIdEmbed(category, steamId, activeDonationTickets, maxTickets, donations) {
     const categoryIcon = BrandUtils.categoryIcons[category];
     const categoryDisplayName = BrandUtils.categoryDisplayNames[category];
 
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.info)
-      .setTitle(`${categoryIcon} เลือก${categoryDisplayName}ที่ต้องการ`)
+      .setTitle(`${categoryIcon} เลือก${categoryDisplayName}`)
       .setDescription(`
-        **🎯 กรุณาเลือก${categoryDisplayName}ที่ต้องการซื้อ**
+        **🆔 Steam64 ID:** \`${steamId}\` (ชั่วคราว)
+        **🎫 Tickets:** ${activeDonationTickets.length}/${maxTickets}
         
-        ⚡ **สถานะ:** ใช้ Steam ID ชั่วคราว
-        🆔 **Steam64 ID:** \`${steamId}\`
-        ⚠️ **หมายเหตุ:** ข้อมูลนี้จะไม่ถูกบันทึก หากต้องการความสะดวก กรุณาเชื่อมต่อบัญชี
-        
-        🎫 **Donation Tickets:** \`${activeDonationTickets.length}/${maxTickets}\`
-        📈 **สถานะ:** ${activeDonationTickets.length < maxTickets ? '🟢 พร้อมใช้งาน' : '🔴 เต็มแล้ว'}
+        เลือก${categoryDisplayName}ที่ต้องการจากเมนูด้านล่าง
       `)
-      .setThumbnail(BrandUtils.brandIcon)
-      .addFields(
-        {
-          name: `📦 รายการ${categoryDisplayName}ทั้งหมด`,
-          value: donations.slice(0, 3).map((item, index) => 
-            `**${index + 1}.** ${item.name}\n💰 ${Helpers.formatCurrency(item.price)} | ${item.description}`
-          ).join('\n\n') + (donations.length > 3 ? `\n\n*และอีก ${donations.length - 3} รายการ...*` : ''),
-          inline: false
-        }
-      )
-      .setFooter({ 
-        text: `${BrandUtils.brandFooter} | 🔗 แนะนำให้เชื่อมต่อบัญชีเพื่อความสะดวก`,
-        iconURL: BrandUtils.brandIcon
-      })
+      .setFooter({ text: `${BrandUtils.brandFooter} | แนะนำให้เชื่อมต่อบัญชีเพื่อความสะดวก` })
       .setTimestamp();
   }
 
+  // ✅ ปรับ Donation Ticket Embed ให้เรียบง่าย
   static createDonationTicketEmbed(ticketId, donationItem, category, userGameInfo, config) {
     const categoryIcon = BrandUtils.getCategoryIcon(category);
-    const categoryName = BrandUtils.getCategoryName(category);
 
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.success)
-      .setTitle(`🎫 Donation Ticket #${ticketId}`)
+      .setTitle(`🎫 Ticket #${ticketId}`)
       .setDescription(`
-        **🎉 ยินดีต้อนรับสู่ระบบโดเนท NEXArk!**
-        
-        ${categoryIcon} **หมวดหมู่:** ${categoryName}
-        🛍️ **รายการ:** \`${donationItem.name}\`
-        💰 **ราคา:** \`${Helpers.formatCurrency(donationItem.price)}\`
-        📝 **รายละเอียด:** ${donationItem.description}
-        
-        🆔 **Steam64 ID:** \`${userGameInfo.steam64}\`
-        📅 **วันที่สั่งซื้อ:** ${Helpers.formatDateTime(new Date())}
-        📊 **สถานะ:** ${BrandUtils.getStatusIndicator('pending')}
+        ${categoryIcon} **${donationItem.name}**
+        💰 **ราคา:** ${Helpers.formatCurrency(donationItem.price)} บาท
+        🆔 **Steam64:** \`${userGameInfo.steam64}\`
       `)
-      .setThumbnail(BrandUtils.brandIcon)
       .addFields(
         {
           name: '💳 ข้อมูลการโอนเงิน',
-          value: `🏦 **ธนาคาร:** ${config.qr_code.payment_info.bank_name}\n💳 **เลขบัญชี:** \`${config.qr_code.payment_info.account_number}\`\n👤 **ชื่อบัญชี:** ${config.qr_code.payment_info.account_name}\n💰 **จำนวนเงิน:** \`${Helpers.formatCurrency(donationItem.price)}\``,
-          inline: false
+          value: `**ธนาคาร:** ${config.qr_code.payment_info.bank_name}\n**เลขบัญชี:** \`${config.qr_code.payment_info.account_number}\`\n**ชื่อบัญชี:** ${config.qr_code.payment_info.account_name}`,
+          inline: true
         },
         {
           name: '📋 ขั้นตอนการทำรายการ',
-          value: '**1️⃣ การชำระเงิน**\n• สแกน QR Code ด้านล่าง หรือ\n• โอนเงินตามข้อมูลด้านบน\n⚠️ โอนเงินตามจำนวนที่ระบุเท่านั้น',
+          value: '1. สแกน QR Code ด้านล่าง\n2. โอนเงินตามจำนวนที่ระบุ\n3. ส่งรูปสลิปในแชทนี้\n4. รอระบบตรวจสอบ (1-5 นาที)',
           inline: true
         },
         {
-          name: '📤 การส่งสลิป',
-          value: '**2️⃣ ส่งสลิป**\n• ถ่ายรูปสลิปให้ชัดเจน\n• ส่งรูปสลิปในแชทนี้\n• รอระบบตรวจสอบ (1-5 นาที)',
-          inline: true
-        },
-        {
-          name: '⚠️ ข้อควรระวังสำคัญ',
-          value: '✅ ตรวจสอบจำนวนเงินให้ถูกต้อง\n✅ สลิปต้องชัดเจนและครบถ้วน\n✅ สลิปต้องทำรายการภายใน 24 ชม.\n❌ ห้ามใช้สลิปเก่าหรือสลิปซ้ำ\n❌ ห้ามแชร์สลิปให้ผู้อื่น',
+          name: '⚠️ ข้อควรระวัง',
+          value: '• โอนเงินตามจำนวนที่ระบุเท่านั้น\n• สลิปต้องชัดเจนและภายใน 24 ชม.\n• ห้ามใช้สลิปซ้ำหรือแชร์ให้ผู้อื่น',
           inline: false
-        },
-        {
-          name: '⏱️ ประมาณการเวลา',
-          value: '🔍 การตรวจสอบสลิป: < 2 นาที\n🎁 การส่งของเข้าเกม: < 3 นาที\n📊 รวมทั้งหมด: < 5 นาที',
-          inline: true
-        },
-        {
-          name: '🛡️ ความปลอดภัย',
-          value: '🔒 ระบบตรวจสอบอัตโนมัติ\n🚫 ป้องกันการใช้สลิปซ้ำ\n🔐 เข้ารหัสข้อมูลส่วนตัว',
-          inline: true
         }
       )
-      .setFooter({ 
-        text: `${BrandUtils.brandFooter} | Ticket: ${ticketId} | 💡 หากมีปัญหา กดปุ่ม "❌ ยกเลิก" แล้วติดต่อแอดมิน`,
-        iconURL: BrandUtils.brandIcon
-      })
+      .setFooter({ text: `${BrandUtils.brandFooter} | หากมีปัญหา กดปุ่ม "ยกเลิก"` })
       .setTimestamp();
   }
 
+  // ✅ ปรับ Processing Embed
   static createProcessingSlipEmbed(ticketData, attachment) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
       .setTitle('⏳ กำลังตรวจสอบสลิป')
       .setDescription(`
-        **🔍 ระบบกำลังตรวจสอบสลิปของคุณ**
+        กำลังตรวจสอบสลิปของคุณ กรุณารอสักครู่...
         
-        **📋 ขั้นตอนการตรวจสอบ:**
-        
-        **1️⃣ ตรวจสอบความถูกต้องของไฟล์** ✅
-        **2️⃣ ดาวน์โหลดและประมวลผลรูปภาพ** 🔄
-        **3️⃣ ส่งข้อมูลไปยัง API ตรวจสอบ** ⏳
-        **4️⃣ ตรวจสอบข้อมูลการโอนเงิน** ⏳
-        **5️⃣ ยืนยันและดำเนินการ** ⏳
-        
-        ⏱️ **เวลาประมาณ:** 1-3 นาที
-        
-        💡 **กรุณารอสักครู่...**
+        **📄 ไฟล์:** ${attachment.name}
+        **📊 ขนาด:** ${(attachment.size / 1024).toFixed(2)} KB
+        **⏱️ เวลาประมาณ:** 1-3 นาที
       `)
-      .setThumbnail(BrandUtils.brandIcon)
-      .addFields(
-        {
-          name: '📊 ข้อมูลไฟล์',
-          value: `• **ชื่อไฟล์:** ${attachment.name}\n• **ขนาด:** ${(attachment.size / 1024).toFixed(2)} KB\n• **ประเภท:** รูปภาพ`,
-          inline: true
-        },
-        {
-          name: '🎫 ข้อมูล Ticket',
-          value: `• **Ticket ID:** ${ticketData.ticketId}\n• **จำนวนเงิน:** ${Helpers.formatCurrency(ticketData.donationItem.price)}\n• **สถานะ:** กำลังประมวลผล`,
-          inline: true
-        },
-        {
-          name: '🔒 ความปลอดภัย',
-          value: '• ระบบจะตรวจสอบสลิปซ้ำ\n• ข้อมูลได้รับการเข้ารหัส\n• ป้องกันการใช้งานโดยไม่ได้รับอนุญาต',
-          inline: false
-        }
-      )
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
+  // ✅ ปรับ Success Embed
   static createSlipVerificationSuccessEmbed(verificationData, ticketData) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.success)
-      .setTitle('✅ การตรวจสอบสลิปสำเร็จ!')
+      .setTitle('✅ ตรวจสอบสลิปสำเร็จ')
       .setDescription(`
-        **🎉 ระบบได้ตรวจสอบสลิปของคุณเรียบร้อยแล้ว**
+        **💰 จำนวนเงิน:** ${Helpers.formatCurrency(verificationData.amount)} บาท
+        **📅 วันที่โอน:** ${new Date(verificationData.date).toLocaleString('th-TH')}
+        **🏦 ธนาคาร:** ${verificationData.receiverBank || verificationData.bank}
         
-        กำลังดำเนินการ...
+        🎮 กำลังส่งของเข้าเกม...
       `)
-      .setThumbnail(BrandUtils.brandIcon)
-      .addFields(
-        {
-          name: '💰 ข้อมูลการโอนเงิน',
-          value: `• **จำนวนเงิน:** ${Helpers.formatCurrency(verificationData.amount)}\n• **วันที่:** ${new Date(verificationData.date).toLocaleString('th-TH')}\n• **ธนาคารผู้รับ:** ${verificationData.receiverBank || verificationData.bank}`,
-          inline: true
-        },
-        {
-          name: '👤 ข้อมูลผู้รับ',
-          value: `• **ชื่อผู้รับ:** ${verificationData.receiver}\n• **เลขบัญชีผู้รับ:** ${verificationData.receiverAccount}\n• **Transaction ID:** ${verificationData.transactionId || 'N/A'}`,
-          inline: true
-        },
-        {
-          name: '🎫 ข้อมูล Ticket',
-          value: `• **Ticket ID:** ${ticketData.ticketId}\n• **รายการ:** ${ticketData.donationItem.name}\n• **สถานะ:** กำลังดำเนินการ`,
-          inline: false
-        }
-      )
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
+  // ✅ เพิ่ม function ที่ขาดหายไป
   static createExecutingDonationEmbed(ticketData) {
+    const categoryIcon = BrandUtils.getCategoryIcon(ticketData.category);
+    
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
       .setTitle("⚙️ กำลังดำเนินการ")
       .setDescription(`
-        **🎮 ระบบกำลังดำเนินการให้คุณ...**
+        ${categoryIcon} **${ticketData.donationItem.name}**
         
-        • กำลังเชื่อมต่อกับเซิร์ฟเวอร์เกม
-        • กำลังส่งคำสั่งเข้าสู่ระบบ
-        • กำลังตรวจสอบการดำเนินการ
-        
-        **กรุณารอสักครู่**
+        🎮 กำลังส่งคำสั่งเข้าเซิร์ฟเวอร์...
+        ⏱️ กรุณารอสักครู่
       `)
-      .setThumbnail(BrandUtils.brandIcon)
-      .addFields(
-        {
-          name: '📦 รายการที่กำลังดำเนินการ',
-          value: `• **หมวดหมู่:** ${BrandUtils.getCategoryName(ticketData.category)}\n• **รายการ:** ${ticketData.donationItem.name}\n• **ราคา:** ${Helpers.formatCurrency(ticketData.donationItem.price)}`,
-          inline: false
-        }
-      )
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
+  // ✅ ปรับ Completed Embed
   static createDonationCompletedEmbed(ticketData, category, donationItem) {
+    const categoryIcon = BrandUtils.getCategoryIcon(category);
+    
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.success)
-      .setTitle("✅ การโดเนทสำเร็จ!")
+      .setTitle('🎉 การโดเนทสำเร็จ!')
       .setDescription(`
-        **🎉 ยินดีด้วย! การโดเนทของคุณสำเร็จแล้ว**
+        ${categoryIcon} **${donationItem.name}** ส่งสำเร็จแล้ว!
         
-        **รายการ:** ${donationItem.name}
-        **หมวดหมู่:** ${BrandUtils.getCategoryName(category)}
-        **สถานะ:** สำเร็จ
+        🎮 **กรุณาเข้าเกมเพื่อตรวจสอบ**
+        📞 หากมีปัญหา แจ้งแอดมินทันที
         
-        ${this.getSuccessMessage(category, donationItem)}
-        
-        **Ticket นี้จะถูกปิดใน 5 นาที**
+        ขอบคุณที่ใช้บริการ! 💖
       `)
-      .setThumbnail(BrandUtils.brandIcon)
-      .addFields(
-        {
-          name: '🎮 ขั้นตอนถัดไป',
-          value: '• เข้าเกมเพื่อตรวจสอบการรับของ\n• หากมีปัญหา ติดต่อแอดมินทันที\n• เก็บหลักฐานการทำรายการไว้',
-          inline: false
-        }
-      )
-      .setFooter({ text: `${BrandUtils.brandFooter} | ขอบคุณที่ใช้บริการ!` })
+      .setFooter({ text: `${BrandUtils.brandFooter} | Ticket จะปิดใน 5 นาที` })
       .setTimestamp();
   }
 
   static createDonationFailedEmbed(ticketData, reason = null) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.error)
-      .setTitle("❌ เกิดข้อผิดพลาดในการดำเนินการ")
+      .setTitle("❌ เกิดข้อผิดพลาด")
       .setDescription(`
-        **😔 ระบบไม่สามารถดำเนินการได้ในขณะนี้**
+        ระบบไม่สามารถดำเนินการได้ในขณะนี้
         
-        ${reason ? `**เหตุผล:** ${reason}` : ''}
+        ${reason ? `**สาเหตุ:** ${reason}` : ''}
         
-        **กรุณาติดต่อแอดมินพร้อมแจ้ง Ticket ID:** \`${ticketData.ticketId}\`
+        **📞 กรุณาติดต่อแอดมิน**
+        **🎫 Ticket ID:** \`${ticketData.ticketId}\`
       `)
-      .setThumbnail(BrandUtils.brandIcon)
       .addFields(
         {
-          name: '📞 ช่องทางติดต่อ',
-          value: '• Discord DM แอดมินโดยตรง\n• แชทในเซิร์ฟเวอร์หลัก',
-          inline: false
-        },
-        {
           name: '📋 ข้อมูลที่ต้องแจ้ง',
-          value: `• Ticket ID: ${ticketData.ticketId}\n• รายการ: ${ticketData.donationItem.name}\n• เวลาที่เกิดปัญหา: ${Helpers.formatDateTime(new Date())}`,
+          value: `• Ticket ID: ${ticketData.ticketId}\n• รายการ: ${ticketData.donationItem.name}\n• เวลา: ${new Date().toLocaleString('th-TH')}`,
           inline: false
         }
       )
@@ -409,123 +220,79 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
+  // ✅ เพิ่ม function สำหรับยกเลิก
   static createCancelDonationEmbed(ticketId) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
       .setTitle('❌ ยกเลิกการโดเนท')
       .setDescription(`
-        **การโดเนทถูกยกเลิกแล้ว**
+        การโดเนทถูกยกเลิกแล้ว
         
         **Ticket #${ticketId}** จะถูกปิดใน 10 วินาที
         
         หากต้องการทำรายการใหม่ กรุณากลับไปที่เมนูหลัก
       `)
-      .setThumbnail(BrandUtils.brandIcon)
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
   }
 
-  static createErrorEmbed(title, description, thumbnailUrl = null) {
-    const embed = new EmbedBuilder()
+  // ✅ ปรับ Error Embeds
+  static createErrorEmbed(title, description) {
+    return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.error)
       .setTitle(title)
       .setDescription(description)
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
-
-    if (thumbnailUrl) {
-      embed.setThumbnail(thumbnailUrl);
-    }
-
-    return embed;
   }
 
-  static createSuccessEmbed(title, description, thumbnailUrl = null) {
-    const embed = new EmbedBuilder()
-      .setColor(BrandUtils.brandColors.success)
-      .setTitle(title)
-      .setDescription(description)
-      .setFooter({ text: BrandUtils.brandFooter })
-      .setTimestamp();
-
-    if (thumbnailUrl) {
-      embed.setThumbnail(thumbnailUrl);
-    }
-
-    return embed;
-  }
-
-  static createWarningEmbed(title, description, thumbnailUrl = null) {
-    const embed = new EmbedBuilder()
+  static createWarningEmbed(title, description) {
+    return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
       .setTitle(title)
       .setDescription(description)
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
-
-    if (thumbnailUrl) {
-      embed.setThumbnail(thumbnailUrl);
-    }
-
-    return embed;
   }
 
-  // Helper method for success messages
-  static getSuccessMessage(category, donationItem) {
-    switch (category) {
-      case 'points':
-        return `ได้รับ ${donationItem.points} พ้อยแล้ว กรุณาตรวจสอบในเกม`;
-      case 'ranks':
-        return `ได้รับยศ ${donationItem.rank} แล้ว กรุณาตรวจสอบในเกม`;
-      case 'items':
-        return `ได้รับไอเทมแล้ว กรุณาตรวจสอบในเกม`;
-      default:
-        return 'การดำเนินการเสร็จสิ้น กรุณาตรวจสอบในเกม';
-    }
-  }
-
-  // Mobile-specific optimizations
-  static createMobileOptimizedEmbed(title, description, fields = []) {
-    const embed = new EmbedBuilder()
-      .setColor(BrandUtils.brandColors.primary)
-      .setTitle(title)
-      .setDescription(description)
+  // ✅ ปรับ Max Ticket Embed
+  static createMaxTicketEmbed(activeDonationTickets, maxTickets) {
+    return new EmbedBuilder()
+      .setColor(BrandUtils.brandColors.warning)
+      .setTitle('🎫 Ticket เต็มแล้ว')
+      .setDescription(`
+        คุณมี Ticket เปิดอยู่ **${activeDonationTickets.length}/${maxTickets}** แล้ว
+        
+        📋 **วิธีแก้ไข:**
+        • ปิด Ticket เก่าที่ไม่ใช้แล้ว
+        • รอให้ Ticket ที่กำลังประมวลผลเสร็จ
+        • Ticket จะปิดอัตโนมัติหลังทำรายการเสร็จ
+      `)
       .setFooter({ text: BrandUtils.brandFooter })
       .setTimestamp();
-
-    // แบ่ง fields ออกเป็นชิ้นเล็กๆ สำหรับ mobile
-    const mobileFields = fields.map(field => ({
-      ...field,
-      inline: false // Force all fields to be full width on mobile
-    }));
-
-    if (mobileFields.length > 0) {
-      embed.addFields(mobileFields);
-    }
-
-    return embed;
   }
 
-  // Responsive text formatting helper
-  static formatForMobile(text, maxLength = 1000) {
-    if (text.length <= maxLength) return text;
-    
-    // แบ่งข้อความให้เหมาะสมกับ mobile
-    const words = text.split(' ');
-    let result = '';
-    let currentLine = '';
-    
-    for (const word of words) {
-      if ((currentLine + word).length > 50) { // 50 chars per line on mobile
-        result += currentLine.trim() + '\n';
-        currentLine = word + ' ';
-      } else {
-        currentLine += word + ' ';
-      }
-    }
-    
-    result += currentLine.trim();
-    return result.length > maxLength ? result.substring(0, maxLength - 3) + '...' : result;
+  // ✅ เพิ่ม Embed สำหรับเลือกระหว่าง Link และ Manual
+  static createChooseInputMethodEmbed(category) {
+    const categoryIcon = BrandUtils.getCategoryIcon(category);
+    const categoryName = BrandUtils.getCategoryName(category);
+
+    return new EmbedBuilder()
+      .setColor(BrandUtils.brandColors.info)
+      .setTitle(`${categoryIcon} เลือกวิธีกรอกข้อมูล`)
+      .setDescription(`
+        คุณต้องการโดเนท${categoryName} กรุณาเลือกวิธีการ:
+        
+        🔗 **ใช้ข้อมูลที่เชื่อมต่อไว้** (แนะนำ)
+        • สะดวก ไม่ต้องกรอกซ้ำ
+        • ข้อมูลถูกต้องแน่นอน
+        
+        🆔 **กรอก Steam64 ID ใหม่**
+        • กรอกเลข Steam64 ID ด้วยตนเอง
+        • เหมาะสำหรับบัญชีอื่น
+      `)
+      .setFooter({ text: BrandUtils.brandFooter })
+      .setTimestamp();
   }
 }
 
