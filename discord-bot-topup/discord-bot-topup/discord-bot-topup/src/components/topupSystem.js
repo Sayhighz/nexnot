@@ -504,63 +504,66 @@ async handleButtonInteraction(interaction) {
     }
   }
 
-  async processSlipVerification(message, ticketData, attachment) {
-    // Send processing message
-    const processingEmbed = EmbedBuilders.createProcessingSlipEmbed(ticketData, attachment);
-    const processingMessage = await message.reply({ embeds: [processingEmbed] });
+async processSlipVerification(message, ticketData, attachment) {
+  // Send processing message
+  const processingEmbed = EmbedBuilders.createProcessingSlipEmbed(ticketData, attachment);
+  const processingMessage = await message.reply({ embeds: [processingEmbed] });
 
-    try {
-      // Process slip verification
-      const config = configService.getConfig();
-      const bankInfo = config.qr_code.payment_info;
-      
-      const verificationResult = await slipVerification.processSlipImage(
-        attachment,
-        message.author.id,
-        ticketData.donationItem.price,
-        bankInfo
+  try {
+    // Process slip verification
+    const config = configService.getConfig();
+    const bankInfo = config.qr_code.payment_info;
+    
+    const verificationResult = await slipVerification.processSlipImage(
+      attachment,
+      message.author.id,
+      ticketData.donationItem.price,
+      bankInfo
+    );
+
+    if (verificationResult.success) {
+      // ✅ เพิ่ม slip image URL
+      verificationResult.slipImageUrl = attachment.url;
+
+      // Update processing message
+      const successEmbed = EmbedBuilders.createSlipVerificationSuccessEmbed(
+        verificationResult.data, 
+        ticketData
       );
+      await processingMessage.edit({ embeds: [successEmbed] });
 
-      if (verificationResult.success) {
-        // Update processing message
-        const successEmbed = EmbedBuilders.createSlipVerificationSuccessEmbed(
-          verificationResult.data, 
-          ticketData
-        );
-        await processingMessage.edit({ embeds: [successEmbed] });
-
-        // Update database
-        const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
-        if (topupLog) {
-          await databaseService.updateTopupStatus(topupLog.id, 'verified', {
-            verificationData: verificationResult.data,
-            slipImageUrl: attachment.url
-          });
-        }
-
-        // Execute donation
-        await this.executeDonation(message, ticketData, verificationResult);
-
-      } else {
-        // Verification failed
-        await processingMessage.edit({
-          embeds: [EmbedBuilders.createErrorEmbed(
-            '❌ การตรวจสอบสลิปล้มเหลว',
-            verificationResult.error || 'ไม่สามารถตรวจสอบสลิปได้'
-          )]
+      // Update database
+      const topupLog = await databaseService.getTopupByTicketId(ticketData.ticketId);
+      if (topupLog) {
+        await databaseService.updateTopupStatus(topupLog.id, 'verified', {
+          verificationData: verificationResult.data,
+          slipImageUrl: attachment.url
         });
       }
 
-    } catch (error) {
-      DebugHelper.error('Slip processing error:', error);
+      // Execute donation
+      await this.executeDonation(message, ticketData, verificationResult);
+
+    } else {
+      // Verification failed
       await processingMessage.edit({
         embeds: [EmbedBuilders.createErrorEmbed(
-          '❌ เกิดข้อผิดพลาดในการประมวลผล',
-          'กรุณาลองส่งสลิปใหม่อีกครั้ง หรือติดต่อแอดมิน'
+          '❌ การตรวจสอบสลิปล้มเหลว',
+          verificationResult.error || 'ไม่สามารถตรวจสอบสลิปได้'
         )]
       });
     }
+
+  } catch (error) {
+    DebugHelper.error('Slip processing error:', error);
+    await processingMessage.edit({
+      embeds: [EmbedBuilders.createErrorEmbed(
+        '❌ เกิดข้อผิดพลาดในการประมวลผล',
+        'กรุณาลองส่งสลิปใหม่อีกครั้ง หรือติดต่อแอดมิน'
+      )]
+    });
   }
+}
 
   async executeDonation(message, ticketData, verificationResult) {
     try {
@@ -625,23 +628,35 @@ async handleButtonInteraction(interaction) {
   }
 
   async cancelDonation(interaction) {
-    try {
-      await ticketHandler.cancelTicket(interaction, 'manual');
-      
-      // ลบ temporary steam id ถ้ามี
-      const ticketData = ticketHandler.getTicketData(interaction.channel.id);
-      if (ticketData?.userGameInfo.isTemporary) {
-        this.temporarySteamIds.delete(interaction.user.id);
-      }
-
-      logService.logTopupEvent('cancelled', interaction.user.id, {
-        ticketId: ticketData?.ticketId
-      });
-
-    } catch (error) {
-      await ErrorHandler.handleInteractionError(error, interaction, 'Cancel Donation');
+  try {
+    await ticketHandler.cancelTicket(interaction);
+    
+    // ลบ temporary steam id ถ้ามี
+    const ticketData = ticketHandler.getTicketData(interaction.channel.id);
+    if (ticketData?.userGameInfo.isTemporary) {
+      this.temporarySteamIds.delete(interaction.user.id);
     }
+
+    // ✅ เพิ่ม: ดึง ticketId จาก customId หรือจาก ticketData
+    let ticketId = 'unknown';
+    if (interaction.customId && interaction.customId.includes('_')) {
+      const parts = interaction.customId.split('_');
+      if (parts.length >= 3) {
+        ticketId = parts[2];
+      }
+    } else if (ticketData) {
+      ticketId = ticketData.ticketId;
+    }
+
+    logService.logTopupEvent('cancelled', interaction.user.id, {
+      ticketId: ticketId,
+      customId: interaction.customId // เพิ่ม debug info
+    });
+
+  } catch (error) {
+    await ErrorHandler.handleInteractionError(error, interaction, 'Cancel Donation');
   }
+}
 
   async startPeriodicTasks() {
     // Cleanup expired tickets every 30 minutes

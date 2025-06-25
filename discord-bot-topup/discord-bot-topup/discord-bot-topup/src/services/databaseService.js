@@ -1,3 +1,4 @@
+// src/services/databaseService.js (Full Code - ปรับปรุง Connection Handling)
 import mysql from "mysql2/promise";
 import configService from "./configService.js";
 
@@ -5,6 +6,9 @@ class DatabaseService {
   constructor() {
     this.pool = null;
     this.isConnected = false;
+    this.connectionRetries = 0;
+    this.maxRetries = 3;
+    this.retryDelay = 5000; // 5 seconds
   }
 
   async connect() {
@@ -27,6 +31,12 @@ class DatabaseService {
         maxIdle: 5,
         enableKeepAlive: true,
         keepAliveInitialDelay: 0,
+        // ✅ เพิ่ม settings สำหรับ connection stability
+        supportBigNumbers: true,
+        bigNumberStrings: true,
+        multipleStatements: false,
+        trace: false,
+        stringifyObjects: false
       });
 
       // ทดสอบ connection
@@ -35,6 +45,7 @@ class DatabaseService {
       connection.release();
 
       this.isConnected = true;
+      this.connectionRetries = 0;
       console.log("✅ Database pool created successfully");
     } catch (error) {
       console.error("❌ Database connection failed:", error);
@@ -56,7 +67,7 @@ class DatabaseService {
 
       // ลองสร้าง pool ใหม่
       try {
-        await this.connect();
+        await this.reconnect();
         return await this.pool.getConnection();
       } catch (retryError) {
         console.error("❌ Retry connection failed:", retryError);
@@ -65,41 +76,100 @@ class DatabaseService {
     }
   }
 
-  async executeQuery(query, params = []) {
-    let connection;
-
-    try {
-      connection = await this.getConnection();
-      const [result] = await connection.execute(query, params);
-      return result;
-    } catch (error) {
-      console.error("❌ Database query error:", error);
-      throw error;
-    } finally {
-      if (connection) {
-        connection.release();
+  // ✅ เพิ่ม method สำหรับ reconnect
+  async reconnect() {
+    console.log("🔄 Attempting to reconnect to database...");
+    
+    if (this.pool) {
+      try {
+        await this.pool.end();
+      } catch (error) {
+        console.warn("Warning during pool cleanup:", error.message);
       }
     }
+    
+    this.pool = null;
+    this.isConnected = false;
+    
+    await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+    await this.connect();
   }
 
-  // เพิ่มฟังก์ชัน helper ที่ปลอดภัย
-  // เพิ่มฟังก์ชัน helper ที่ปลอดภัย
+  // ✅ ปรับปรุง executeQuery ให้มี retry mechanism
+  async executeQuery(query, params = [], maxRetries = 3) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let connection;
+      
+      try {
+        connection = await this.getConnection();
+        const [result] = await connection.execute(query, params);
+        return result;
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ Database query error (attempt ${attempt}/${maxRetries}):`, error.message);
+        
+        // ตรวจสอบว่าเป็น connection error หรือไม่
+        if (this.isConnectionError(error) && attempt < maxRetries) {
+          console.log(`🔄 Retrying query in ${this.retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+          
+          // พยายาม reconnect
+          try {
+            await this.reconnect();
+          } catch (reconnectError) {
+            console.error("Failed to reconnect:", reconnectError.message);
+          }
+        } else {
+          // ถ้าไม่ใช่ connection error หรือหมด retry แล้ว ให้ throw error
+          break;
+        }
+      } finally {
+        if (connection) {
+          connection.release();
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+
+  // ✅ เพิ่ม method ตรวจสอบ connection error
+  isConnectionError(error) {
+    const connectionErrorCodes = [
+      'ECONNRESET',
+      'ECONNREFUSED', 
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'ER_SERVER_GONE_ERROR',
+      'PROTOCOL_CONNECTION_LOST',
+      'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR'
+    ];
+    
+    return connectionErrorCodes.some(code => 
+      error.code === code || 
+      error.errno === code ||
+      error.message.includes(code)
+    );
+  }
+
+  // เดิมที่มีอยู่แล้ว (ไม่ต้องแก้ไข)
   safeParseJSON(data) {
     try {
       if (typeof data === "string") {
         return JSON.parse(data);
       } else if (typeof data === "object" && data !== null) {
-        return data; // ถ้าเป็น object อยู่แล้ว
+        return data;
       } else {
-        return {}; // fallback
+        return {};
       }
     } catch (error) {
       console.warn("⚠️ Failed to parse JSON data:", error);
-      return {}; // fallback
+      return {};
     }
   }
 
-  // แทนที่ getDiscordUserData ทั้งหมด
   async getDiscordUserData(discordId) {
     const query = "SELECT * FROM ngc_discord_users WHERE guid = ?";
     try {
@@ -116,7 +186,6 @@ class DatabaseService {
     }
   }
 
-  // แทนที่ getPlayerData ทั้งหมด
   async getPlayerData(steam64) {
     const query = "SELECT * FROM ngc_players WHERE guid = ?";
     try {
@@ -133,7 +202,6 @@ class DatabaseService {
     }
   }
 
-  // แทนที่ getSteam64FromDiscord ทั้งหมด
   async getSteam64FromDiscord(discordId) {
     try {
       const userData = await this.getDiscordUserData(discordId);
@@ -147,7 +215,6 @@ class DatabaseService {
     }
   }
 
-  // แทนที่ getCharacterIdFromSteam64 ทั้งหมด
   async getCharacterIdFromSteam64(steam64) {
     try {
       const playerData = await this.getPlayerData(steam64);
@@ -194,7 +261,6 @@ class DatabaseService {
     }
   }
 
-  // เดิมที่มีอยู่แล้ว
   async createTables() {
     const createTopupLogsTable = `
       CREATE TABLE IF NOT EXISTS topup_logs (
@@ -265,6 +331,40 @@ class DatabaseService {
     }
   }
 
+  // ✅ ปรับปรุง getTribeScores ให้มี error handling ที่ดีขึ้น
+  async getTribeScores() {
+    const query = `
+      SELECT tribeId, tribeName, score, oldScore, progress, position, mode
+      FROM tribescore
+      ORDER BY position ASC
+      LIMIT 20
+    `;
+
+    try {
+      const rows = await this.executeQuery(query, [], 2); // ลด retry เหลือ 2 ครั้งสำหรับ scoreboard
+      return rows;
+    } catch (error) {
+      console.error("❌ Error getting tribe scores:", error);
+
+      // ถ้า table ไม่มี ให้คืน array ว่าง
+      if (error.code === "ER_NO_SUCH_TABLE") {
+        console.warn("⚠️ tribescore table not found, returning empty array");
+        return [];
+      }
+
+      // ถ้าเป็น connection error ให้คืน array ว่างแทนการ throw error
+      if (this.isConnectionError(error)) {
+        console.warn("⚠️ Database connection issue for scoreboard, returning empty array");
+        return [];
+      }
+
+      // สำหรับ error อื่นๆ ให้คืน array ว่าง
+      console.warn("⚠️ Scoreboard query failed, returning empty array");
+      return [];
+    }
+  }
+
+  // ส่วนอื่นๆ ยังเหมือนเดิม (logDonationTransaction, updateTopupStatus, etc.)
   async logDonationTransaction(data) {
     const query = `
       INSERT INTO topup_logs 
@@ -294,7 +394,6 @@ class DatabaseService {
     }
   }
 
-  // เหลือ methods เดิมๆ ที่มีอยู่แล้ว...
   async updateTopupStatus(id, status, additionalData = {}) {
     const fields = ["status = ?"];
     const values = [status];
@@ -351,30 +450,6 @@ class DatabaseService {
       await this.executeQuery(query, [slipHash, discordId, amount]);
     } catch (error) {
       console.error("❌ Error saving slip hash:", error);
-      throw error;
-    }
-  }
-
-  async getTribeScores() {
-    const query = `
-      SELECT tribeId, tribeName, score, oldScore, progress, position, mode
-      FROM tribescore
-      ORDER BY position ASC
-      LIMIT 20
-    `;
-
-    try {
-      const rows = await this.executeQuery(query);
-      return rows;
-    } catch (error) {
-      console.error("❌ Error getting tribe scores:", error);
-
-      // ถ้า table ไม่มี ให้คืน array ว่าง
-      if (error.code === "ER_NO_SUCH_TABLE") {
-        console.warn("⚠️ tribescore table not found, returning empty array");
-        return [];
-      }
-
       throw error;
     }
   }
@@ -443,7 +518,6 @@ class DatabaseService {
     }
   }
 
-  // เพิ่ม method นี้
   async getActiveSupportTickets(discordId) {
     const query = `
     SELECT * FROM active_tickets 
@@ -460,7 +534,6 @@ class DatabaseService {
     }
   }
 
-  // เพิ่ม method นี้ด้วย
   async getActiveDonationTickets(discordId) {
     const query = `
     SELECT * FROM active_tickets 
@@ -477,9 +550,6 @@ class DatabaseService {
     }
   }
 
-  // เพิ่ม methods ใหม่ใน DatabaseService class
-
-  // เช็คสถานะผู้เล่นและ server ที่ online อยู่
   async getPlayerOnlineStatus(steam64) {
     const query = "SELECT * FROM ngc_players WHERE guid = ?";
     try {
@@ -517,7 +587,6 @@ class DatabaseService {
     }
   }
 
-  // เช็คผู้เล่นทั้งหมดที่ online ในเซิร์ฟเวอร์ที่ระบุ
   async getOnlinePlayersInServer(serverKey) {
     const query = `
     SELECT guid, data 
@@ -545,7 +614,6 @@ class DatabaseService {
     }
   }
 
-  // เช็คจำนวนผู้เล่น online ในแต่ละเซิร์ฟเวอร์
   async getServerPlayerCounts() {
     const query = `
     SELECT 
@@ -560,7 +628,7 @@ class DatabaseService {
       const rows = await this.executeQuery(query);
       const result = {};
       rows.forEach((row) => {
-        const serverKey = row.serverKey?.replace(/"/g, ""); // Remove quotes from JSON extract
+        const serverKey = row.serverKey?.replace(/"/g, "");
         if (serverKey) {
           result[serverKey] = parseInt(row.playerCount);
         }
@@ -572,7 +640,6 @@ class DatabaseService {
     }
   }
 
-  // เช็คประวัติการเข้าเซิร์ฟเวอร์ของผู้เล่น
   async getPlayerServerHistory(steam64, limit = 10) {
     const query = "SELECT * FROM ngc_players WHERE guid = ?";
     try {
@@ -597,53 +664,28 @@ class DatabaseService {
     }
   }
 
-  // อัพเดท getUserGameInfo ให้รวมข้อมูล server status
-  async getUserGameInfo(discordId) {
-    try {
-      const steam64 = await this.getSteam64FromDiscord(discordId);
-      if (!steam64) {
-        return {
-          isLinked: false,
-          steam64: null,
-          characterId: null,
-          userData: null,
-          playerData: null,
-          onlineStatus: null,
-        };
-      }
-
-      const characterId = await this.getCharacterIdFromSteam64(steam64);
-      const userData = await this.getDiscordUserData(discordId);
-      const playerData = await this.getPlayerData(steam64);
-      const onlineStatus = await this.getPlayerOnlineStatus(steam64);
-
-      return {
-        isLinked: true,
-        steam64: steam64,
-        characterId: characterId,
-        userData: userData,
-        playerData: playerData,
-        onlineStatus: onlineStatus,
-      };
-    } catch (error) {
-      console.error("❌ Error getting user game info:", error);
-      throw error;
-    }
-  }
-
-  // เพิ่มเมธอดสำหรับตรวจสอบสถานะ connection
+  // ✅ ปรับปรุง healthCheck ให้ดีขึ้น
   async healthCheck() {
     try {
       const connection = await this.getConnection();
       await connection.ping();
       connection.release();
-      return { status: "healthy", connected: true };
+      return { 
+        status: "healthy", 
+        connected: true,
+        connectionRetries: this.connectionRetries,
+        lastError: null
+      };
     } catch (error) {
-      return { status: "unhealthy", connected: false, error: error.message };
+      return { 
+        status: "unhealthy", 
+        connected: false, 
+        error: error.message,
+        connectionRetries: this.connectionRetries
+      };
     }
   }
 
-  // เพิ่มเมธอดปิด connection pool
   async close() {
     if (this.pool) {
       await this.pool.end();

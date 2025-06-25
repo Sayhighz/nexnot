@@ -1,4 +1,4 @@
-// src/handlers/donationHandler.js
+// src/handlers/donationHandler.js (Full Code - แก้ไขให้ใช้ kits)
 import databaseService from '../services/databaseService.js';
 import configService from '../services/configService.js';
 import rconManager from '../components/rconManager.js';
@@ -31,7 +31,8 @@ class DonationHandler {
           result = await this.giveRank(targetServer, userGameInfo.steam64, donationItem.rcon_commands);
           break;
         case 'items':
-          result = await this.giveItems(targetServer, userGameInfo.steam64, donationItem.items);
+          // ✅ แก้ไข: ใช้ kits แทน items
+          result = await this.giveKits(targetServer, userGameInfo.steam64, donationItem.kits);
           break;
         default:
           result = { success: false, error: 'หมวดหมู่ไม่รองรับ' };
@@ -40,8 +41,8 @@ class DonationHandler {
       // Update database
       await this.updateDonationStatus(ticketData, result);
 
-      // Send webhook notification
-      await this.sendWebhookNotification(ticketData, result, targetServer);
+      // Send webhook notification - ✅ เพิ่ม slip image
+      await this.sendWebhookNotification(ticketData, result, targetServer, verificationResult);
 
       return result;
 
@@ -73,26 +74,25 @@ class DonationHandler {
     }
   }
 
-  async giveItems(serverKey, steam64, items) {
+  // ✅ แก้ไข: ใช้ giveKits แทน giveItems
+  async giveKits(serverKey, steam64, kits) {
     try {
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        return { success: false, error: 'ไม่พบรายการไอเทมที่ต้องส่ง' };
+      if (!kits || !Array.isArray(kits) || kits.length === 0) {
+        return { success: false, error: 'ไม่พบรายการ Kit ที่ต้องส่ง' };
       }
 
-      DebugHelper.log(`Giving ${items.length} items to ${steam64} on ${serverKey}`);
+      DebugHelper.log(`Giving ${kits.length} kits to ${steam64} on ${serverKey}`);
 
-      for (const item of items) {
-        const itemResult = await rconManager.giveItemToServer(
+      for (const kit of kits) {
+        const kitResult = await rconManager.giveKitToServer(
           serverKey,
           steam64,
-          item.path,
-          item.quantity || 1,
-          item.quality || 0,
-          item.blueprintType || 0
+          kit.kitName,
+          kit.quantity || 1
         );
         
-        if (!itemResult.success) {
-          return { success: false, error: itemResult.error };
+        if (!kitResult.success) {
+          return { success: false, error: kitResult.error };
         }
       }
 
@@ -119,7 +119,8 @@ class DonationHandler {
     }
   }
 
-  async sendWebhookNotification(ticketData, result, targetServer) {
+  // ✅ แก้ไข: เพิ่ม slip image และ verification result
+  async sendWebhookNotification(ticketData, result, targetServer, verificationResult = null) {
     try {
       const webhookData = {
         discordId: ticketData.userId,
@@ -134,9 +135,17 @@ class DonationHandler {
         ticketId: ticketData.ticketId,
         playerName: ticketData.userGameInfo.userData?.player_name || 'Unknown',
         timestamp: new Date().toISOString(),
+        
+        // ✅ เพิ่มข้อมูลสำหรับแต่ละประเภท
         ...(ticketData.donationItem.points && { points: ticketData.donationItem.points }),
-        ...(ticketData.donationItem.items && { items: ticketData.donationItem.items }),
-        ...(result.error && { error: result.error })
+        ...(ticketData.donationItem.kits && { kits: ticketData.donationItem.kits }),
+        ...(result.error && { error: result.error }),
+        
+        // ✅ เพิ่มข้อมูล verification และ slip
+        ...(verificationResult && {
+          verificationData: verificationResult.data,
+          slipImageUrl: verificationResult.slipImageUrl
+        })
       };
 
       await webhookService.sendDonationNotification(webhookData);
@@ -160,6 +169,7 @@ class DonationHandler {
     return donations.find(item => item.id === donationId);
   }
 
+  // ✅ แก้ไข: validation สำหรับ kits
   validateDonationData(category, donationItem, userGameInfo) {
     const errors = [];
 
@@ -171,8 +181,8 @@ class DonationHandler {
       errors.push('ข้อมูลผู้เล่นไม่ถูกต้อง');
     }
 
-    if (category === 'items' && (!donationItem.items || donationItem.items.length === 0)) {
-      errors.push('ไม่พบรายการไอเทม');
+    if (category === 'items' && (!donationItem.kits || donationItem.kits.length === 0)) {
+      errors.push('ไม่พบรายการ Kit');
     }
 
     if (category === 'ranks' && (!donationItem.rcon_commands || donationItem.rcon_commands.length === 0)) {

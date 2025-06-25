@@ -1,4 +1,4 @@
-// src/components/rconManager.js (Cleaned up)
+// src/components/rconManager.js (Full Code - แก้ไขคำสั่ง RCON)
 import { Rcon } from 'rcon-client';
 import logService from '../services/logService.js';
 import configService from '../services/configService.js';
@@ -326,11 +326,12 @@ class RconManager {
     return 'Command executed successfully';
   }
 
-  async giveItemToServer(serverKey, steam64, itemPath, quantity = 1, quality = 0, blueprintType = 0) {
-    if (!steam64 || !itemPath) {
+  // ✅ แก้ไข: ใช้ ChangeKitAmount แทน giveitem
+  async giveKitToServer(serverKey, steam64, kitName, quantity = 1) {
+    if (!steam64 || !kitName) {
       return {
         success: false,
-        error: 'Missing required parameters: steam64 or itemPath',
+        error: 'Missing required parameters: steam64 or kitName',
         response: null,
         serverKey: serverKey
       };
@@ -345,16 +346,17 @@ class RconManager {
       };
     }
 
-    const command = `giveitem ${steam64} "${itemPath}" ${quantity} ${quality} ${blueprintType}`;
+    const command = `ChangeKitAmount ${steam64} ${kitName} ${quantity}`;
     const result = await this.executeCommandOnServer(serverKey, command);
     
     if (result.success) {
-      DebugHelper.log(`Successfully gave item to ${steam64} on ${serverKey}`);
+      DebugHelper.log(`Successfully gave kit ${kitName} (${quantity}) to ${steam64} on ${serverKey}`);
     }
     
     return result;
   }
 
+  // ✅ คำสั่ง AddPoints ถูกต้องแล้ว
   async givePointsToServer(serverKey, steam64, amount) {
     if (!steam64 || !amount) {
       return {
@@ -384,6 +386,7 @@ class RconManager {
     return result;
   }
 
+  // ✅ แก้ไข: ใช้ Permission.Add format
   async executeRankCommands(serverKey, steam64, rankCommands) {
     if (!rankCommands || !Array.isArray(rankCommands)) {
       return {
@@ -398,7 +401,10 @@ class RconManager {
     let allSuccess = true;
 
     for (const command of rankCommands) {
-      const processedCommand = command.replace('{steam64}', steam64);
+      // รองรับทั้ง {steam64} และ <SteamID64> placeholders
+      const processedCommand = command
+        .replace(/{steam64}/g, steam64)
+        .replace(/<SteamID64>/g, steam64);
       
       const result = await this.executeCommandOnServer(serverKey, processedCommand);
       results.push(result);
@@ -541,35 +547,6 @@ class RconManager {
     }
     DebugHelper.log(`Reset failures for ${resetCount} servers`);
     return resetCount;
-  }
-
-  extractItemName(itemPath) {
-    if (!itemPath) return 'Unknown Item';
-    
-    const pathParts = itemPath.split('/');
-    const lastPart = pathParts[pathParts.length - 1];
-    
-    let itemName = lastPart;
-    
-    const cleanupPatterns = [
-      'PrimalItemArmor_',
-      'PrimalItemResource_',
-      'PrimalItemWeapon_',
-      'PrimalItemConsumable_',
-      'PrimalItemStructure_',
-      'PrimalItem_'
-    ];
-    
-    cleanupPatterns.forEach(pattern => {
-      if (itemName.includes(pattern)) {
-        itemName = itemName.replace(pattern, '');
-      }
-    });
-    
-    itemName = itemName.replace(/['"]/g, '');
-    itemName = itemName.replace(/([A-Z])/g, ' $1').trim();
-    
-    return itemName || 'Unknown Item';
   }
 
   async shutdown() {

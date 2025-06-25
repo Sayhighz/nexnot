@@ -117,103 +117,167 @@ class ScoreboardManager {
     }
   }
 
-  async generateScoreboardEmbed(page = 0) {
+  // ใน src/components/scoreboardManager.js - แก้ไขเฉพาะ method นี้
+async generateScoreboardEmbed(page = 0) {
+  try {
+    const itemsPerPage = 10;
+    const startIndex = page * itemsPerPage;
+    
+    // ✅ เพิ่ม try-catch สำหรับ database query
+    let tribeScores = [];
     try {
-      const itemsPerPage = 10;
-      const startIndex = page * itemsPerPage;
+      tribeScores = await databaseService.getTribeScores();
+    } catch (dbError) {
+      console.error("❌ Database error in scoreboard:", dbError);
       
-      // Get tribe scores from database
-      const tribeScores = await databaseService.getTribeScores();
-      
-      if (!tribeScores || tribeScores.length === 0) {
-        const embed = new EmbedBuilder()
-          .setColor(CONSTANTS.COLORS.WARNING)
-          .setTitle('🏆 Tribe Scoreboard')
-          .setDescription('ยังไม่มีข้อมูล Tribe Score')
-          .setTimestamp();
-        
-        return { embed, components: [] };
-      }
-
-      // Calculate pages
-      const totalPages = Math.ceil(tribeScores.length / itemsPerPage);
-      const currentPageData = tribeScores.slice(startIndex, startIndex + itemsPerPage);
-      
-      // Create embed
-      const embed = new EmbedBuilder()
-        .setColor(CONSTANTS.COLORS.PRIMARY)
-        .setTitle('🏆 Tribe Scoreboard')
-        .setDescription(`อันดับ Tribe ทั้งหมด (หน้า ${page + 1}/${totalPages})`)
-        .setTimestamp();
-
-      // Add tribe data
-      let description = '';
-      currentPageData.forEach((tribe, index) => {
-        const rank = startIndex + index + 1;
-        const medal = this.getRankMedal(rank);
-        const progress = tribe.progress || 0;
-        const progressBar = this.generateProgressBar(progress);
-        
-        description += `${medal} **#${rank}** ${tribe.tribeName || 'Unknown Tribe'}\n`;
-        description += `📊 Score: **${tribe.score?.toLocaleString() || 0}**\n`;
-        description += `📈 Progress: ${progressBar} ${progress}%\n`;
-        description += `🔄 Old Score: ${tribe.oldScore?.toLocaleString() || 0}\n\n`;
-      });
-
-      embed.setDescription(description);
-      
-      // Add footer with update time
-      embed.setFooter({ 
-        text: `สถิติล่าสุด • อัพเดทอัตโนมัติทุก 5 นาที | Total: ${tribeScores.length} tribes` 
-      });
-
-      // Create navigation buttons
-      const components = [];
-      if (totalPages > 1) {
-        const buttons = new ActionRowBuilder();
-        
-        if (page > 0) {
-          buttons.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`scoreboard_prev_${page - 1}`)
-              .setLabel('◀ หน้าก่อน')
-              .setStyle(ButtonStyle.Secondary)
-          );
-        }
-        
-        buttons.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`scoreboard_refresh_${page}`)
-            .setLabel('🔄 รีเฟรช')
-            .setStyle(ButtonStyle.Primary)
-        );
-        
-        if (page < totalPages - 1) {
-          buttons.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`scoreboard_next_${page + 1}`)
-              .setLabel('หน้าถัดไป ▶')
-              .setStyle(ButtonStyle.Secondary)
-          );
-        }
-        
-        components.push(buttons);
-      }
-      
-      return { embed, components };
-      
-    } catch (error) {
-      console.error('❌ Error generating scoreboard embed:', error);
-      
+      // ส่งคืน error embed แทนการ crash
       const errorEmbed = new EmbedBuilder()
         .setColor(CONSTANTS.COLORS.ERROR)
-        .setTitle('❌ ข้อผิดพลาด')
-        .setDescription('ไม่สามารถโหลดข้อมูล Scoreboard ได้')
+        .setTitle('❌ ข้อผิดพลาดฐานข้อมูล')
+        .setDescription(`ไม่สามารถเชื่อมต่อฐานข้อมูลได้\n\`${dbError.message}\`\n\nกำลังพยายามเชื่อมต่อใหม่...`)
         .setTimestamp();
       
       return { embed: errorEmbed, components: [] };
     }
+    
+    if (!tribeScores || tribeScores.length === 0) {
+      const embed = new EmbedBuilder()
+        .setColor(CONSTANTS.COLORS.WARNING)
+        .setTitle('🏆 Tribe Scoreboard')
+        .setDescription('ยังไม่มีข้อมูล Tribe Score หรือไม่สามารถโหลดข้อมูลได้')
+        .addFields([
+          {
+            name: '📋 สาเหตุที่เป็นไปได้',
+            value: '• ยังไม่มีข้อมูล Tribe ในระบบ\n• การเชื่อมต่อฐานข้อมูลมีปัญหา\n• ตาราง tribescore ยังไม่ถูกสร้าง',
+            inline: false
+          }
+        ])
+        .setTimestamp();
+      
+      return { embed, components: [] };
+    }
+
+    // Calculate pages
+    const totalPages = Math.ceil(tribeScores.length / itemsPerPage);
+    const currentPageData = tribeScores.slice(startIndex, startIndex + itemsPerPage);
+    
+    // Create embed
+    const embed = new EmbedBuilder()
+      .setColor(CONSTANTS.COLORS.PRIMARY)
+      .setTitle('🏆 Tribe Scoreboard')
+      .setDescription(`อันดับ Tribe ทั้งหมด (หน้า ${page + 1}/${totalPages})`)
+      .setTimestamp();
+
+    // Add tribe data
+    let description = '';
+    currentPageData.forEach((tribe, index) => {
+      const rank = startIndex + index + 1;
+      const medal = this.getRankMedal(rank);
+      const progress = tribe.progress || 0;
+      const progressBar = this.generateProgressBar(progress);
+      
+      description += `${medal} **#${rank}** ${tribe.tribeName || 'Unknown Tribe'}\n`;
+      description += `📊 Score: **${tribe.score?.toLocaleString() || 0}**\n`;
+      description += `📈 Progress: ${progressBar} ${progress}%\n`;
+      description += `🔄 Old Score: ${tribe.oldScore?.toLocaleString() || 0}\n\n`;
+    });
+
+    embed.setDescription(description);
+    
+    // Add footer with update time
+    embed.setFooter({ 
+      text: `สถิติล่าสุด • อัพเดทอัตโนมัติทุก 5 นาที | Total: ${tribeScores.length} tribes` 
+    });
+
+    // Create navigation buttons
+    const components = [];
+    if (totalPages > 1) {
+      const buttons = new ActionRowBuilder();
+      
+      if (page > 0) {
+        buttons.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`scoreboard_prev_${page - 1}`)
+            .setLabel('◀ หน้าก่อน')
+            .setStyle(ButtonStyle.Secondary)
+        );
+      }
+      
+      buttons.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`scoreboard_refresh_${page}`)
+          .setLabel('🔄 รีเฟรช')
+          .setStyle(ButtonStyle.Primary)
+      );
+      
+      if (page < totalPages - 1) {
+        buttons.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`scoreboard_next_${page + 1}`)
+            .setLabel('หน้าถัดไป ▶')
+            .setStyle(ButtonStyle.Secondary)
+        );
+      }
+      
+      components.push(buttons);
+    }
+    
+    return { embed, components };
+    
+  } catch (error) {
+    console.error('❌ Error generating scoreboard embed:', error);
+    
+    const errorEmbed = new EmbedBuilder()
+      .setColor(CONSTANTS.COLORS.ERROR)
+      .setTitle('❌ ข้อผิดพลาด')
+      .setDescription(`ไม่สามารถโหลดข้อมูล Scoreboard ได้\n\nError: \`${error.message}\``)
+      .addFields([
+        {
+          name: '🔧 วิธีแก้ไข',
+          value: '• ตรวจสอบการเชื่อมต่อฐานข้อมูล\n• ตรวจสอบตาราง tribescore\n• ลองรีเฟรชในอีกสักครู่',
+          inline: false
+        }
+      ])
+      .setTimestamp();
+    
+    return { embed: errorEmbed, components: [] };
   }
+}
+
+// ✅ เพิ่ม method สำหรับ handle database errors
+async updatePermanentScoreboard() {
+  if (!this.permanentMessage) {
+    console.warn('⚠️ No permanent scoreboard message to update');
+    return;
+  }
+
+  try {
+    const { embed, components } = await this.generateScoreboardEmbed();
+    
+    await this.permanentMessage.edit({
+      embeds: [embed],
+      components: components
+    });
+    
+    console.log('🔄 Scoreboard updated successfully');
+    
+  } catch (error) {
+    console.error('❌ Error updating permanent scoreboard:', error);
+    
+    // ถ้าเป็น database error ไม่ต้อง recreate message
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+      console.log('⚠️ Database connection issue, skipping this update cycle');
+      return;
+    }
+    
+    // Try to recreate if message was deleted
+    if (error.code === 10008) { // Unknown Message
+      console.log('🔄 Recreating deleted scoreboard message...');
+      this.permanentMessage = null;
+      await this.setupPermanentScoreboard();
+    }
+  }
+}
 
   getRankMedal(rank) {
     switch (rank) {

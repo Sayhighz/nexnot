@@ -1,3 +1,4 @@
+// src/services/webhookService.js (Full Code - เพิ่มการส่งรูปสลิป)
 import axios from 'axios';
 import configService from './configService.js';
 import logService from './logService.js';
@@ -69,7 +70,8 @@ class WebhookService {
           category: donationData.category,
           itemName: donationData.itemName,
           amount: donationData.amount,
-          server: donationData.server
+          server: donationData.server,
+          hasSlipImage: !!donationData.slipImageUrl
         });
 
         return { success: true };
@@ -92,6 +94,7 @@ class WebhookService {
     }
   }
 
+  // ✅ แก้ไข: เพิ่มรูปสลิปและข้อมูลเพิ่มเติม
   createDonationEmbed(donationData) {
     const {
       discordId,
@@ -105,7 +108,9 @@ class WebhookService {
       status,
       ticketId,
       playerName,
-      timestamp
+      timestamp,
+      slipImageUrl,
+      verificationData
     } = donationData;
 
     const categoryIcon = BrandUtils.getCategoryIcon(category);
@@ -140,6 +145,41 @@ class WebhookService {
       }
     };
 
+    // ✅ เพิ่มรูปสลิปถ้ามี
+    if (slipImageUrl) {
+      embed.image = {
+        url: slipImageUrl
+      };
+      
+      // เพิ่ม field สำหรับข้อมูลสลิป
+      if (verificationData) {
+        let slipInfo = `💳 **จำนวนเงิน:** ${Helpers.formatCurrency(verificationData.amount || amount)}`;
+        
+        if (verificationData.date) {
+          const slipDate = new Date(verificationData.date);
+          slipInfo += `\n📅 **วันที่โอน:** ${slipDate.toLocaleString('th-TH')}`;
+        }
+        
+        if (verificationData.bank || verificationData.receiverBank) {
+          slipInfo += `\n🏦 **ธนาคาร:** ${verificationData.bank || verificationData.receiverBank}`;
+        }
+        
+        if (verificationData.sender) {
+          slipInfo += `\n👤 **ผู้โอน:** ${verificationData.sender}`;
+        }
+        
+        if (verificationData.transactionId) {
+          slipInfo += `\n🔢 **Transaction ID:** \`${verificationData.transactionId}\``;
+        }
+
+        embed.fields.push({
+          name: '🧾 ข้อมูลสลิป',
+          value: slipInfo,
+          inline: false
+        });
+      }
+    }
+
     // เพิ่มข้อมูลเฉพาะตาม category
     if (category === 'points' && donationData.points) {
       embed.fields.push({
@@ -149,14 +189,31 @@ class WebhookService {
       });
     }
 
-    if (category === 'items' && donationData.items) {
-      const itemsList = donationData.items.map(item => 
-        `• ${this.extractItemName(item.path)} x${item.quantity || 1}`
+    if (category === 'items' && donationData.kits) {
+      const kitsList = donationData.kits.map(kit => 
+        `• ${kit.kitName} x${kit.quantity || 1}`
       ).join('\n');
       
       embed.fields.push({
-        name: '🎁 รายการไอเทม',
-        value: itemsList.length > 1000 ? itemsList.substring(0, 1000) + '...' : itemsList,
+        name: '🎁 รายการ Kit',
+        value: kitsList.length > 1000 ? kitsList.substring(0, 1000) + '...' : kitsList,
+        inline: false
+      });
+    }
+
+    if (category === 'ranks' && donationData.rank) {
+      embed.fields.push({
+        name: '👑 ยศที่ได้รับ',
+        value: `**ยศ:** ${donationData.rank}`,
+        inline: false
+      });
+    }
+
+    // เพิ่มข้อมูลข้อผิดพลาดถ้ามี
+    if (donationData.error && status === 'failed') {
+      embed.fields.push({
+        name: '❌ ข้อผิดพลาด',
+        value: `\`${donationData.error}\``,
         inline: false
       });
     }
@@ -173,37 +230,6 @@ class WebhookService {
       'cancelled': 0x9E9E9E     // Gray
     };
     return colors[status] || colors.pending;
-  }
-
-  extractItemName(itemPath) {
-    if (!itemPath) return 'Unknown Item';
-    
-    const pathParts = itemPath.split('/');
-    const lastPart = pathParts[pathParts.length - 1];
-    
-    let itemName = lastPart;
-    
-    // Remove common prefixes
-    const cleanupPatterns = [
-      'PrimalItemArmor_',
-      'PrimalItemResource_', 
-      'PrimalItemWeapon_',
-      'PrimalItemConsumable_',
-      'PrimalItemStructure_',
-      'PrimalItem_'
-    ];
-    
-    cleanupPatterns.forEach(pattern => {
-      if (itemName.includes(pattern)) {
-        itemName = itemName.replace(pattern, '');
-      }
-    });
-    
-    // Remove quotes and add spaces before capitals
-    itemName = itemName.replace(/['"]/g, '');
-    itemName = itemName.replace(/([A-Z])/g, ' $1').trim();
-    
-    return itemName || 'Unknown Item';
   }
 
   async testWebhook() {
