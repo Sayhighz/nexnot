@@ -20,8 +20,7 @@ const CONSTANTS = {
   
   TICKET: {
     PREFIX: 'topup-',
-    MAX_TICKETS_PER_USER: 3,
-    MAX_SUPPORT_TICKETS_PER_USER: 2  // เพิ่มบรรทัดนี้
+    MAX_TICKETS_PER_USER: 3
   },
   
   SLIP: {

@@ -54,52 +54,6 @@ import {
       }
     }
   
-    static async createSupportTicketChannel(guild, user, ticketId) {
-      try {
-        // Find or create category
-        let ticketCategory = guild.channels.cache.find(
-          (c) =>
-            c.name === 'SUPPORT_TICKETS' &&
-            c.type === ChannelType.GuildCategory
-        );
-  
-        if (!ticketCategory) {
-          ticketCategory = await guild.channels.create({
-            name: 'SUPPORT_TICKETS',
-            type: ChannelType.GuildCategory,
-          });
-        }
-  
-        // Create ticket channel
-        const ticketChannel = await guild.channels.create({
-          name: `support-${ticketId}`,
-          type: ChannelType.GuildText,
-          parent: ticketCategory.id,
-          topic: `🆘 Support Ticket | ${user.username} | by NEXArk`,
-          permissionOverwrites: [
-            {
-              id: guild.roles.everyone.id,
-              deny: [PermissionFlagsBits.ViewChannel],
-            },
-            {
-              id: user.id,
-              allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.AttachFiles,
-                PermissionFlagsBits.ReadMessageHistory,
-              ],
-            },
-          ],
-        });
-  
-        return ticketChannel;
-      } catch (error) {
-        console.error('Error creating support ticket channel:', error);
-        return null;
-      }
-    }
-  
     static async cleanupExpiredTickets(activeTickets, client) {
       try {
         const now = Date.now();

@@ -116,12 +116,7 @@ class TopupSystem {
           .setCustomId('donate_items')
           .setLabel('🎁 โดเนทไอเทม')
           .setStyle(ButtonStyle.Secondary)
-          .setEmoji('🎪'),
-        new ButtonBuilder()
-          .setCustomId('support_ticket')
-          .setLabel('🎫 แจ้งปัญหา')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('🆘')
+          .setEmoji('🎪')
       );
 
     await channel.send({
@@ -166,11 +161,6 @@ class TopupSystem {
           await interaction.deferReply({ ephemeral: true });
           await this.showDonationCategory(interaction, 'items');
           break;
-          
-        case 'support_ticket':
-          await interaction.deferReply({ ephemeral: true });
-          await this.createSupportTicket(interaction);
-          break;
 
         case 'cancel_donation':
           await interaction.deferReply();
@@ -181,9 +171,6 @@ class TopupSystem {
           if (customId.startsWith('select_donation_')) {
             await interaction.deferReply({ ephemeral: true });
             await this.handleDonationSelection(interaction);
-          } else if (customId.startsWith('close_ticket_')) {
-            await interaction.deferReply();
-            await this.closeSupportTicket(interaction);
           } else {
             // ปุ่มที่ไม่รู้จัก
             await interaction.reply({
@@ -520,70 +507,6 @@ class TopupSystem {
       logService.error('Error creating donation ticket:', error);
       await interaction.editReply({
         content: '❌ ไม่สามารถสร้าง Ticket ได้ กรุณาลองใหม่อีกครั้ง'
-      });
-    }
-  }
-
-  async createSupportTicket(interaction) {
-    try {
-      const user = interaction.user;
-      const guild = interaction.guild;
-      
-      // Check active support tickets
-      const activeSupportTickets = await databaseService.getActiveSupportTickets(user.id);
-      if (activeSupportTickets.length >= CONSTANTS.TICKET.MAX_SUPPORT_TICKETS_PER_USER) {
-        return await interaction.editReply({
-          content: `❌ คุณมี Support Ticket ที่เปิดอยู่เกินจำนวนที่อนุญาต (${activeSupportTickets.length}/${CONSTANTS.TICKET.MAX_SUPPORT_TICKETS_PER_USER})\nกรุณาปิด Ticket เก่าก่อนสร้างใหม่`
-        });
-      }
-
-      const ticketId = Helpers.generateTicketId();
-      
-      console.log(`🆘 Creating support ticket: ${ticketId} for ${user.tag}`);
-
-      // Create ticket channel
-      const ticketChannel = await TicketManager.createSupportTicketChannel(guild, user, ticketId);
-      
-      if (!ticketChannel) {
-        return await interaction.editReply({
-          content: '❌ ไม่สามารถสร้าง Support Ticket ได้ กรุณาติดต่อแอดมิน'
-        });
-      }
-
-      // Save to database
-      await databaseService.createActiveTicket(user.id, ticketChannel.id, ticketId, 'support');
-
-      const embed = EmbedBuilders.createSupportTicketEmbed(ticketId, user, activeSupportTickets, CONSTANTS.TICKET.MAX_SUPPORT_TICKETS_PER_USER);
-
-      const closeButton = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId(`close_ticket_${ticketId}`)
-            .setLabel('🔒 ปิด Ticket')
-            .setStyle(ButtonStyle.Secondary)
-        );
-
-      await ticketChannel.send({
-        content: `${user} ยินดีต้อนรับสู่ระบบช่วยเหลือ NEXArk! 🆘`,
-        embeds: [embed],
-        components: [closeButton]
-      });
-
-      await interaction.editReply({
-        content: `✅ สร้าง Support Ticket สำเร็จ!\n📍 กรุณาไปที่ ${ticketChannel} เพื่อแจ้งปัญหาของคุณ`
-      });
-
-      logService.info('Support ticket created', {
-        ticketId,
-        userId: user.id,
-        username: user.tag,
-        channelId: ticketChannel.id
-      });
-
-    } catch (error) {
-      logService.error('Error creating support ticket:', error);
-      await interaction.editReply({
-        content: '❌ ไม่สามารถสร้าง Support Ticket ได้ กรุณาลองใหม่อีกครั้ง'
       });
     }
   }
@@ -936,38 +859,6 @@ async sendDonationWebhook(donationData) {
       logService.error('Error cancelling donation:', error);
       await interaction.editReply({
         content: '❌ เกิดข้อผิดพลาดในการยกเลิก'
-      });
-    }
-  }
-
-  async closeSupportTicket(interaction) {
-    try {
-      const [, , ticketId] = interaction.customId.split('_');
-      
-      // Update database
-      await databaseService.updateTicketStatus(ticketId, 'completed');
-
-      const closeEmbed = EmbedBuilders.createCloseSupportTicketEmbed(ticketId);
-      await interaction.editReply({ embeds: [closeEmbed] });
-
-      // Schedule deletion
-      setTimeout(async () => {
-        try {
-          await interaction.channel.delete();
-        } catch (error) {
-          console.error('Error deleting support ticket channel:', error);
-        }
-      }, 10000);
-
-      logService.info('Support ticket closed', {
-        ticketId,
-        userId: interaction.user.id
-      });
-
-    } catch (error) {
-      logService.error('Error closing support ticket:', error);
-      await interaction.editReply({
-        content: '❌ เกิดข้อผิดพลาดในการปิด Ticket'
       });
     }
   }
