@@ -1,3 +1,4 @@
+// src/utils/constants.js
 const CONSTANTS = {
   COLORS: {
     SUCCESS: 0x00ff00,
@@ -35,4 +36,4 @@ const CONSTANTS = {
   }
 };
 
-export default CONSTANTS;
+module.exports = CONSTANTS;

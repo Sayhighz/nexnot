@@ -1,20 +1,20 @@
 // src/handlers/ticketHandler.js
-import { 
+const { 
   ChannelType, 
   PermissionFlagsBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle
-} from 'discord.js';
-import databaseService from '../services/databaseService.js';
-import qrCodeService from '../services/qrCodeService.js';
-import configService from '../services/configService.js';
-import CONSTANTS from '../utils/constants.js';
-import Helpers from '../utils/helpers.js';
-import EmbedBuilders from '../utils/embedBuilders.js';
-import ValidationHelper from '../utils/validationHelper.js';
-import ErrorHandler from '../utils/errorHandler.js';
-import DebugHelper from '../utils/debugHelper.js';
+} = require('discord.js');
+const databaseService = require('../services/databaseService');
+const qrCodeService = require('../services/qrCodeService');
+const configService = require('../services/configService');
+const CONSTANTS = require('../utils/constants');
+const Helpers = require('../utils/helpers');
+const EmbedBuilders = require('../utils/embedBuilders');
+const ValidationHelper = require('../utils/validationHelper');
+const ErrorHandler = require('../utils/errorHandler');
+const DebugHelper = require('../utils/debugHelper');
 
 class TicketHandler {
   constructor() {
@@ -166,57 +166,56 @@ class TicketHandler {
     });
   }
 
-
-async cancelTicket(interaction) {
-  try {
-    const ticketData = this.activeTickets.get(interaction.channel.id);
-    
-    if (!ticketData) {
-      throw new Error('ไม่พบข้อมูล Ticket');
-    }
-
-    if (!ValidationHelper.validateTicketOwnership(ticketData, interaction.user.id)) {
-      throw new Error('คุณไม่มีสิทธิ์ยกเลิก Ticket นี้');
-    }
-
-    // ✅ เพิ่ม: ดึง ticketId จาก customId ถ้ามี
-    let ticketId = ticketData.ticketId;
-    if (interaction.customId && interaction.customId.includes('_')) {
-      const parts = interaction.customId.split('_');
-      if (parts.length >= 3) {
-        ticketId = parts[2]; // cancel_donation_XXXXX
+  async cancelTicket(interaction) {
+    try {
+      const ticketData = this.activeTickets.get(interaction.channel.id);
+      
+      if (!ticketData) {
+        throw new Error('ไม่พบข้อมูล Ticket');
       }
-    }
 
-    DebugHelper.log(`Cancelling ticket: ${ticketId}`, {
-      userId: interaction.user.id,
-      channelId: interaction.channel.id
-    });
-
-    // Update database
-    await databaseService.updateTicketStatus(ticketId, 'cancelled');
-    this.activeTickets.delete(interaction.channel.id);
-
-    // Send cancel message
-    const cancelEmbed = EmbedBuilders.createCancelDonationEmbed(ticketId);
-    await interaction.editReply({ embeds: [cancelEmbed] });
-
-    // Schedule deletion
-    setTimeout(async () => {
-      try {
-        await interaction.channel.delete();
-      } catch (error) {
-        DebugHelper.error('Error deleting cancelled ticket channel:', error);
+      if (!ValidationHelper.validateTicketOwnership(ticketData, interaction.user.id)) {
+        throw new Error('คุณไม่มีสิทธิ์ยกเลิก Ticket นี้');
       }
-    }, 10000);
 
-    return { success: true };
+      // เพิ่ม: ดึง ticketId จาก customId ถ้ามี
+      let ticketId = ticketData.ticketId;
+      if (interaction.customId && interaction.customId.includes('_')) {
+        const parts = interaction.customId.split('_');
+        if (parts.length >= 3) {
+          ticketId = parts[2]; // cancel_donation_XXXXX
+        }
+      }
 
-  } catch (error) {
-    DebugHelper.error('Error cancelling ticket:', error);
-    throw error;
+      DebugHelper.log(`Cancelling ticket: ${ticketId}`, {
+        userId: interaction.user.id,
+        channelId: interaction.channel.id
+      });
+
+      // Update database
+      await databaseService.updateTicketStatus(ticketId, 'cancelled');
+      this.activeTickets.delete(interaction.channel.id);
+
+      // Send cancel message
+      const cancelEmbed = EmbedBuilders.createCancelDonationEmbed(ticketId);
+      await interaction.editReply({ embeds: [cancelEmbed] });
+
+      // Schedule deletion
+      setTimeout(async () => {
+        try {
+          await interaction.channel.delete();
+        } catch (error) {
+          DebugHelper.error('Error deleting cancelled ticket channel:', error);
+        }
+      }, 10000);
+
+      return { success: true };
+
+    } catch (error) {
+      DebugHelper.error('Error cancelling ticket:', error);
+      throw error;
+    }
   }
-}
 
   async completeTicket(channelId, ticketId) {
     try {
@@ -294,4 +293,4 @@ async cancelTicket(interaction) {
   }
 }
 
-export default new TicketHandler();
+module.exports = new TicketHandler();

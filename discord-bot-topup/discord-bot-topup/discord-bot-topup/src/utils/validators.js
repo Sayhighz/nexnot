@@ -1,4 +1,5 @@
-import CONSTANTS from '../utils/constants.js';
+// src/utils/validators.js
+const CONSTANTS = require('./constants');
 
 class Validators {
   static validateFileType(attachment) {
@@ -52,4 +53,4 @@ class Validators {
   }
 }
 
-export default Validators;
+module.exports = Validators;

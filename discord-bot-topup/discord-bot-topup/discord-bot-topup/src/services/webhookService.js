@@ -1,9 +1,9 @@
-// src/services/webhookService.js (Full Code - เพิ่มการส่งรูปสลิป)
-import axios from 'axios';
-import configService from './configService.js';
-import logService from './logService.js';
-import Helpers from '../utils/helpers.js';
-import BrandUtils from '../utils/brandUtils.js';
+// src/services/webhookService.js
+const axios = require('axios');
+const configService = require('./configService');
+const logService = require('./logService');
+const Helpers = require('../utils/helpers');
+const BrandUtils = require('../utils/brandUtils');
 
 class WebhookService {
   constructor() {
@@ -64,7 +64,7 @@ class WebhookService {
 
       if (response.status === 204) {
         console.log('✅ Donation notification sent successfully');
-        logService.info('Webhook notification sent', {
+        await logService.info('Webhook notification sent', {
           discordId: donationData.discordId,
           username: donationData.discordUsername,
           category: donationData.category,
@@ -81,7 +81,7 @@ class WebhookService {
 
     } catch (error) {
       console.error('❌ Error sending webhook notification:', error);
-      logService.error('Webhook notification failed', {
+      await logService.error('Webhook notification failed', {
         error: error.message,
         discordId: donationData.discordId,
         amount: donationData.amount
@@ -94,7 +94,7 @@ class WebhookService {
     }
   }
 
-  // ✅ แก้ไข: เพิ่มรูปสลิปและข้อมูลเพิ่มเติม
+  // เพิ่มรูปสลิปและข้อมูลเพิ่มเติม
   createDonationEmbed(donationData) {
     const {
       discordId,
@@ -145,7 +145,7 @@ class WebhookService {
       }
     };
 
-    // ✅ เพิ่มรูปสลิปถ้ามี
+    // เพิ่มรูปสลิปถ้ามี
     if (slipImageUrl) {
       embed.image = {
         url: slipImageUrl
@@ -305,4 +305,4 @@ class WebhookService {
   }
 }
 
-export default new WebhookService();
+module.exports = new WebhookService();

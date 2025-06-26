@@ -1,13 +1,14 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// src/services/logService.js
+const fs = require('fs').promises;
+const path = require('path');
 
 class LogService {
   constructor() {
     this.logDir = path.join(__dirname, '../../logs');
+    this.maxLogSizeMB = 10;
+    this.maxLogFiles = 30;
+    this.logLevel = process.env.LOG_LEVEL || 'info';
+    this.enableConsole = process.env.NODE_ENV === 'development';
     this.initLogDirectory();
   }
 
@@ -20,30 +21,66 @@ class LogService {
   }
 
   async writeLog(level, message, data = null) {
+    if (!this.shouldLog(level)) return;
+
     const timestamp = new Date().toISOString();
     const logEntry = {
       timestamp,
-      level,
+      level: level.toUpperCase(),
       message,
-      data
+      data,
+      pid: process.pid,
+      memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
     };
 
     const logString = JSON.stringify(logEntry) + '\n';
-    const dateStr = new Date().toISOString().split('T')[0];
-    const logFile = path.join(this.logDir, `${dateStr}.log`);
+    
+    // Write to file
+    await this.writeToFile(logString, level);
+    
+    // Write to console only in development or for errors
+    if (this.enableConsole || level === 'error') {
+      const consoleMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
+      if (data && level === 'error') {
+        console.error(consoleMessage, data);
+      } else if (this.enableConsole) {
+        console.log(consoleMessage);
+      }
+    }
+  }
 
+  shouldLog(level) {
+    const levels = { error: 0, warn: 1, info: 2, debug: 3 };
+    return levels[level] <= levels[this.logLevel];
+  }
+
+  async writeToFile(logString, level) {
     try {
+      const dateStr = new Date().toISOString().split('T')[0];
+      const logFile = path.join(this.logDir, `${dateStr}-${level}.log`);
+      
+      // Check file size and rotate if needed
+      await this.rotateLogIfNeeded(logFile);
       await fs.appendFile(logFile, logString);
     } catch (error) {
-      console.error('❌ Error writing to log file:', error);
+      // Fallback to console if file writing fails
+      if (this.enableConsole) {
+        console.error('Failed to write to log file:', error);
+      }
     }
+  }
 
-    // Also log to console
-    const consoleMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    if (data) {
-      console.log(consoleMessage, data);
-    } else {
-      console.log(consoleMessage);
+  async rotateLogIfNeeded(logFile) {
+    try {
+      const stats = await fs.stat(logFile);
+      const maxSize = this.maxLogSizeMB * 1024 * 1024;
+      
+      if (stats.size > maxSize) {
+        const rotatedFile = logFile.replace('.log', `-${Date.now()}.log`);
+        await fs.rename(logFile, rotatedFile);
+      }
+    } catch (error) {
+      // File doesn't exist yet, which is fine
     }
   }
 
@@ -64,22 +101,13 @@ class LogService {
   }
 
   async logTopupEvent(event, userId, data = {}) {
-    const logData = {
-      event,
-      userId,
-      ...data
-    };
-
+    const logData = { event, userId, ...data };
     await this.info(`Topup Event: ${event}`, logData);
   }
 
   async logSlipVerification(userId, result, data = {}) {
-    const logData = {
-      userId,
-      result,
-      ...data
-    };
-
+    const logData = { userId, result, ...data };
+    
     if (result === 'success') {
       await this.info('Slip verification successful', logData);
     } else {
@@ -88,12 +116,8 @@ class LogService {
   }
 
   async logRconCommand(command, result, data = {}) {
-    const logData = {
-      command,
-      result,
-      ...data
-    };
-
+    const logData = { command, result, ...data };
+    
     if (result === 'success') {
       await this.info('RCON command executed', logData);
     } else {
@@ -101,7 +125,7 @@ class LogService {
     }
   }
 
-  async cleanupOldLogs(daysToKeep = 30) {
+  async cleanupOldLogs(daysToKeep = this.maxLogFiles) {
     try {
       const files = await fs.readdir(this.logDir);
       const cutoffDate = new Date();
@@ -114,14 +138,22 @@ class LogService {
           
           if (stats.mtime < cutoffDate) {
             await fs.unlink(filePath);
-            console.log(`🗑️ Deleted old log file: ${file}`);
+            await this.info(`Deleted old log file: ${file}`);
           }
         }
       }
     } catch (error) {
-      console.error('❌ Error cleaning up old logs:', error);
+      await this.error('Error cleaning up old logs:', error);
     }
+  }
+
+  // Silent logging for production (no console output)
+  silentLog(level, message, data = null) {
+    const originalEnableConsole = this.enableConsole;
+    this.enableConsole = false;
+    this.writeLog(level, message, data);
+    this.enableConsole = originalEnableConsole;
   }
 }
 
-export default new LogService();
+module.exports = new LogService();

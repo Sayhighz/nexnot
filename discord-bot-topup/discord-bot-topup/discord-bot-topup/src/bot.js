@@ -1,10 +1,7 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// src/bot.js
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const fs = require('fs').promises;
+const path = require('path');
 
 class BotCommands {
   constructor(client) {
@@ -126,4 +123,4 @@ class BotCommands {
   }
 }
 
-export default BotCommands;
+module.exports = BotCommands;

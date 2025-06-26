@@ -1,68 +1,37 @@
 // src/utils/debugHelper.js
-import configService from '../services/configService.js';
+const logService = require('../services/logService');
 
 class DebugHelper {
   static isDebugEnabled() {
-    try {
-      const settings = configService.getSettings();
-      return settings.debug === true;
-    } catch {
-      return false;
-    }
+    return process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true';
   }
 
   static log(message, data = null) {
     if (!this.isDebugEnabled()) return;
-    
-    const timestamp = new Date().toISOString();
-    if (data) {
-      console.log(`[DEBUG ${timestamp}] ${message}`, data);
-    } else {
-      console.log(`[DEBUG ${timestamp}] ${message}`);
-    }
+    logService.debug(message, data);
   }
 
   static warn(message, data = null) {
-    if (!this.isDebugEnabled()) return;
-    
-    const timestamp = new Date().toISOString();
-    if (data) {
-      console.warn(`[DEBUG-WARN ${timestamp}] ${message}`, data);
-    } else {
-      console.warn(`[DEBUG-WARN ${timestamp}] ${message}`);
-    }
+    logService.warn(message, data);
   }
 
   static error(message, error = null) {
-    // Error จะแสดงเสมอไม่ว่า debug จะเปิดหรือปิด
-    const timestamp = new Date().toISOString();
-    if (error) {
-      console.error(`[ERROR ${timestamp}] ${message}`, error);
-    } else {
-      console.error(`[ERROR ${timestamp}] ${message}`);
-    }
+    logService.error(message, error);
   }
 
   static info(message, data = null) {
-    // Info จะแสดงเสมอ
-    const timestamp = new Date().toISOString();
-    if (data) {
-      console.log(`[INFO ${timestamp}] ${message}`, data);
-    } else {
-      console.log(`[INFO ${timestamp}] ${message}`);
-    }
+    logService.info(message, data);
   }
 
   static trace(functionName, data = null) {
     if (!this.isDebugEnabled()) return;
-    
-    const timestamp = new Date().toISOString();
-    if (data) {
-      console.log(`[TRACE ${timestamp}] ${functionName}`, data);
-    } else {
-      console.log(`[TRACE ${timestamp}] Entering ${functionName}`);
-    }
+    logService.debug(`TRACE: ${functionName}`, data);
+  }
+
+  // Production safe logging
+  static production(level, message, data = null) {
+    logService.silentLog(level, message, data);
   }
 }
 
-export default DebugHelper;
+module.exports = DebugHelper;

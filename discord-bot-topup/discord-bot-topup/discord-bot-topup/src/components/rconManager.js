@@ -1,8 +1,8 @@
-// src/components/rconManager.js (Full Code - แก้ไขคำสั่ง RCON)
-import { Rcon } from 'rcon-client';
-import logService from '../services/logService.js';
-import configService from '../services/configService.js';
-import DebugHelper from '../utils/debugHelper.js';
+// src/components/rconManager.js
+const { Rcon } = require('rcon-client');
+const logService = require('../services/logService');
+const configService = require('../services/configService');
+const DebugHelper = require('../utils/debugHelper');
 
 class RconManager {
   constructor() {
@@ -231,7 +231,7 @@ class RconManager {
       serverConfig.lastConnection = new Date();
       serverConfig.lastError = null;
 
-      logService.logRconCommand(command, 'success', {
+      await logService.logRconCommand(command, 'success', {
         response: responseText.substring(0, 500),
         host: serverConfig.host,
         port: serverConfig.port,
@@ -250,7 +250,7 @@ class RconManager {
       serverConfig.consecutiveFailures++;
       serverConfig.lastError = error.message;
 
-      logService.logRconCommand(command, 'failed', {
+      await logService.logRconCommand(command, 'failed', {
         error: error.message,
         host: serverConfig.host,
         port: serverConfig.port,
@@ -326,7 +326,7 @@ class RconManager {
     return 'Command executed successfully';
   }
 
-  // ✅ แก้ไข: ใช้ ChangeKitAmount แทน giveitem
+  // ใช้ ChangeKitAmount แทน giveitem
   async giveKitToServer(serverKey, steam64, kitName, quantity = 1) {
     if (!steam64 || !kitName) {
       return {
@@ -356,7 +356,7 @@ class RconManager {
     return result;
   }
 
-  // ✅ คำสั่ง AddPoints ถูกต้องแล้ว
+  // คำสั่ง AddPoints ถูกต้องแล้ว
   async givePointsToServer(serverKey, steam64, amount) {
     if (!steam64 || !amount) {
       return {
@@ -386,7 +386,7 @@ class RconManager {
     return result;
   }
 
-  // ✅ แก้ไข: ใช้ Permission.Add format
+  // ใช้ Permission.Add format
   async executeRankCommands(serverKey, steam64, rankCommands) {
     if (!rankCommands || !Array.isArray(rankCommands)) {
       return {
@@ -573,4 +573,4 @@ class RconManager {
   }
 }
 
-export default new RconManager();
+module.exports = new RconManager();

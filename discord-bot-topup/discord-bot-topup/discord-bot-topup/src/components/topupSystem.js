@@ -1,5 +1,5 @@
-// src/components/topupSystem.js (ปรับ logic ใหม่)
-import { 
+// src/components/topupSystem.js
+const { 
   ActionRowBuilder, 
   ButtonBuilder, 
   ButtonStyle, 
@@ -7,20 +7,20 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle
-} from 'discord.js';
-import databaseService from "../services/databaseService.js";
-import slipVerification from "./slipVerification.js";
-import logService from "../services/logService.js";
-import configService from "../services/configService.js";
+} = require('discord.js');
+const databaseService = require("../services/databaseService");
+const slipVerification = require("./slipVerification");
+const logService = require("../services/logService");
+const configService = require("../services/configService");
 
-import donationHandler from "../handlers/donationHandler.js";
-import ticketHandler from "../handlers/ticketHandler.js";
-import BrandUtils from "../utils/brandUtils.js";
-import EmbedBuilders from "../utils/embedBuilders.js";
-import ValidationHelper from "../utils/validationHelper.js";
-import ResponseHelper from "../utils/responseHelper.js";
-import ErrorHandler from "../utils/errorHandler.js";
-import DebugHelper from "../utils/debugHelper.js";
+const donationHandler = require("../handlers/donationHandler");
+const ticketHandler = require("../handlers/ticketHandler");
+const BrandUtils = require("../utils/brandUtils");
+const EmbedBuilders = require("../utils/embedBuilders");
+const ValidationHelper = require("../utils/validationHelper");
+const ResponseHelper = require("../utils/responseHelper");
+const ErrorHandler = require("../utils/errorHandler");
+const DebugHelper = require("../utils/debugHelper");
 
 class TopupSystem {
   constructor(client) {
@@ -37,38 +37,37 @@ class TopupSystem {
     DebugHelper.info("TopupSystem initialized successfully");
   }
 
-  // ใน src/components/topupSystem.js - แก้ไข registerCommands method
-async registerCommands() {
-  const commands = [
-    {
-      name: "setup_menu",
-      description: "ตั้งค่าเมนูหลัก (Admin only)",
-    },
-    {
-      name: "test_easyslip",
-      description: "ทดสอบสถานะ EasySlip API (Admin only)",
-    },
-    {
-      name: "test_webhook",
-      description: "ทดสอบ Discord Webhook (Admin only)",
-    },
-    {
-      name: "test_rcon",
-      description: "ทดสอบ RCON เซิร์ฟเวอร์ (Admin only)",
-    },
-    {
-      name: "bot_status",
-      description: "ดูสถานะบอท (Admin only)",
-    },
-  ];
+  async registerCommands() {
+    const commands = [
+      {
+        name: "setup_menu",
+        description: "ตั้งค่าเมนูหลัก (Admin only)",
+      },
+      {
+        name: "test_easyslip",
+        description: "ทดสอบสถานะ EasySlip API (Admin only)",
+      },
+      {
+        name: "test_webhook",
+        description: "ทดสอบ Discord Webhook (Admin only)",
+      },
+      {
+        name: "test_rcon",
+        description: "ทดสอบ RCON เซิร์ฟเวอร์ (Admin only)",
+      },
+      {
+        name: "bot_status",
+        description: "ดูสถานะบอท (Admin only)",
+      },
+    ];
 
-  try {
-    await this.client.application.commands.set(commands);
-    DebugHelper.info("Commands registered successfully");
-  } catch (error) {
-    ErrorHandler.logAndThrow(error, "Command Registration");
+    try {
+      await this.client.application.commands.set(commands);
+      DebugHelper.info("Commands registered successfully");
+    } catch (error) {
+      ErrorHandler.logAndThrow(error, "Command Registration");
+    }
   }
-}
 
   async setupMenuChannel() {
     try {
@@ -131,83 +130,80 @@ async registerCommands() {
     });
   }
 
-  // ✅ ปรับ handleButtonInteraction ใหม่
-  // src/components/topupSystem.js - แก้ไขส่วน handleButtonInteraction
+  async handleButtonInteraction(interaction) {
+    try {
+      if (!ValidationHelper.checkCooldown(this.userCooldowns, interaction.user.id)) {
+        return await ResponseHelper.safeReply(
+          interaction, 
+          '⏰ กรุณารอสักครู่ก่อนทำรายการใหม่'
+        );
+      }
 
-async handleButtonInteraction(interaction) {
-  try {
-    if (!ValidationHelper.checkCooldown(this.userCooldowns, interaction.user.id)) {
-      return await ResponseHelper.safeReply(
+      ValidationHelper.setCooldown(this.userCooldowns, interaction.user.id);
+      const { customId } = interaction;
+
+      // Handle cancel donation
+      if (customId.startsWith('cancel_donation')) {
+        await ResponseHelper.safeDefer(interaction);
+        await this.cancelDonation(interaction);
+        return;
+      }
+
+      // เพิ่ม case สำหรับ input_steam_id
+      if (customId === 'input_steam_id') {
+        await this.showSteamIdModal(interaction);
+        return;
+      }
+
+      // Handle main category buttons
+      if (customId.startsWith('donate_')) {
+        await ResponseHelper.safeDefer(interaction);
+        const category = customId.replace('donate_', '');
+        await this.handleCategorySelection(interaction, category);
+        return;
+      }
+
+      // Handle method selection buttons
+      if (customId.startsWith('use_linked_')) {
+        await ResponseHelper.safeDefer(interaction);
+        const category = customId.replace('use_linked_', '');
+        await this.showDonationCategoryLinked(interaction, category);
+        return;
+      }
+
+      if (customId.startsWith('use_manual_')) {
+        const category = customId.replace('use_manual_', '');
+        await this.showSteamIdModal(interaction, category);
+        return;
+      }
+
+      // Handle donation selection
+      if (customId.startsWith('select_donation_')) {
+        await ResponseHelper.safeDefer(interaction);
+        await this.handleDonationSelection(interaction);
+        return;
+      }
+
+      // Handle temporary donation (after manual Steam ID input)
+      if (customId.startsWith('temp_donate_')) {
+        await ResponseHelper.safeDefer(interaction);
+        const tempCategory = customId.replace('temp_donate_', '');
+        await this.showDonationCategoryTemporary(interaction, tempCategory);
+        return;
+      }
+
+      // Default case
+      await ResponseHelper.safeReply(
         interaction, 
-        '⏰ กรุณารอสักครู่ก่อนทำรายการใหม่'
+        '❌ ปุ่มนี้ไม่รองรับหรือหมดอายุแล้ว'
       );
+
+    } catch (error) {
+      await ErrorHandler.handleInteractionError(error, interaction, 'Button Interaction');
     }
-
-    ValidationHelper.setCooldown(this.userCooldowns, interaction.user.id);
-    const { customId } = interaction;
-
-    // Handle cancel donation
-    if (customId.startsWith('cancel_donation')) {
-      await ResponseHelper.safeDefer(interaction);
-      await this.cancelDonation(interaction);
-      return;
-    }
-
-    // ✅ เพิ่ม case สำหรับ input_steam_id
-    if (customId === 'input_steam_id') {
-      await this.showSteamIdModal(interaction);
-      return;
-    }
-
-    // Handle main category buttons
-    if (customId.startsWith('donate_')) {
-      await ResponseHelper.safeDefer(interaction);
-      const category = customId.replace('donate_', '');
-      await this.handleCategorySelection(interaction, category);
-      return;
-    }
-
-    // Handle method selection buttons
-    if (customId.startsWith('use_linked_')) {
-      await ResponseHelper.safeDefer(interaction);
-      const category = customId.replace('use_linked_', '');
-      await this.showDonationCategoryLinked(interaction, category);
-      return;
-    }
-
-    if (customId.startsWith('use_manual_')) {
-      const category = customId.replace('use_manual_', '');
-      await this.showSteamIdModal(interaction, category);
-      return;
-    }
-
-    // Handle donation selection
-    if (customId.startsWith('select_donation_')) {
-      await ResponseHelper.safeDefer(interaction);
-      await this.handleDonationSelection(interaction);
-      return;
-    }
-
-    // Handle temporary donation (after manual Steam ID input)
-    if (customId.startsWith('temp_donate_')) {
-      await ResponseHelper.safeDefer(interaction);
-      const tempCategory = customId.replace('temp_donate_', '');
-      await this.showDonationCategoryTemporary(interaction, tempCategory);
-      return;
-    }
-
-    // Default case
-    await ResponseHelper.safeReply(
-      interaction, 
-      '❌ ปุ่มนี้ไม่รองรับหรือหมดอายุแล้ว'
-    );
-
-  } catch (error) {
-    await ErrorHandler.handleInteractionError(error, interaction, 'Button Interaction');
   }
-}
 
-  // ✅ ฟังก์ชันใหม่: จัดการการเลือก category
+  // ฟังก์ชันใหม่: จัดการการเลือก category
   async handleCategorySelection(interaction, category) {
     try {
       const userId = interaction.user.id;
@@ -228,7 +224,7 @@ async handleButtonInteraction(interaction) {
     }
   }
 
-  // ✅ ฟังก์ชันใหม่: แสดงตัวเลือกวิธีการกรอกข้อมูล
+  // ฟังก์ชันใหม่: แสดงตัวเลือกวิธีการกรอกข้อมูล
   async showInputMethodChoice(interaction, category) {
     const embed = EmbedBuilders.createChooseInputMethodEmbed(category);
     const buttons = new ActionRowBuilder()
@@ -249,7 +245,7 @@ async handleButtonInteraction(interaction) {
     });
   }
 
-  // ✅ ฟังก์ชันใหม่: แสดง category โดยใช้ข้อมูลที่ link ไว้
+  // ฟังก์ชันใหม่: แสดง category โดยใช้ข้อมูลที่ link ไว้
   async showDonationCategoryLinked(interaction, category) {
     try {
       const userId = interaction.user.id;
@@ -268,7 +264,7 @@ async handleButtonInteraction(interaction) {
     }
   }
 
-  // ✅ ฟังก์ชันใหม่: แสดง category โดยใช้ Steam ID ชั่วคราว
+  // ฟังก์ชันใหม่: แสดง category โดยใช้ Steam ID ชั่วคราว
   async showDonationCategoryTemporary(interaction, category) {
     try {
       const userId = interaction.user.id;
@@ -407,7 +403,7 @@ async handleButtonInteraction(interaction) {
     });
   }
 
-  // ✅ ปรับ showDonationCategory
+  // ปรับ showDonationCategory
   async showDonationCategory(interaction, category, userGameInfo, isTemporary) {
     try {
       // ตรวจสอบ ticket limit
@@ -523,7 +519,7 @@ async handleButtonInteraction(interaction) {
           content: `✅ สร้าง Donation Ticket สำเร็จ!\n📍 กรุณาไปที่ ${result.channel} เพื่อดำเนินการต่อ`
         });
 
-        logService.logTopupEvent('ticket_created', userId, {
+        await logService.logTopupEvent('ticket_created', userId, {
           ticketId: result.channel.name.replace('topup-', ''),
           category,
           itemName: donationItem.name,
@@ -701,7 +697,7 @@ async handleButtonInteraction(interaction) {
         await executingMessage.edit({ embeds: [failedEmbed] });
       }
 
-      logService.logTopupEvent(result.success ? 'completed' : 'failed', message.author.id, {
+      await logService.logTopupEvent(result.success ? 'completed' : 'failed', message.author.id, {
         ticketId: ticketData.ticketId,
         category: ticketData.category,
         success: result.success,
@@ -741,7 +737,7 @@ async handleButtonInteraction(interaction) {
         ticketId = ticketData.ticketId;
       }
 
-      logService.logTopupEvent('cancelled', interaction.user.id, {
+      await logService.logTopupEvent('cancelled', interaction.user.id, {
         ticketId: ticketId,
         customId: interaction.customId
       });
@@ -791,4 +787,4 @@ async handleButtonInteraction(interaction) {
   }
 }
 
-export default TopupSystem;
+module.exports = TopupSystem;

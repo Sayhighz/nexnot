@@ -1,5 +1,6 @@
-import { createCanvas, loadImage } from 'canvas';
-import Helpers from '../utils/helpers.js';
+// src/services/qrCodeService.js
+const { createCanvas, loadImage } = require('canvas');
+const Helpers = require('../utils/helpers');
 
 class QRCodeService {
   async generatePaymentQR(amount, packageName, bankInfo) {
@@ -82,8 +83,6 @@ class QRCodeService {
         
         ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
       } catch (qrError) {
-        console.warn('⚠️ Could not load QR image, showing text instead');
-        
         // แสดงข้อความแทนถ้าโหลด QR ไม่ได้
         ctx.fillStyle = '#6c757d';
         ctx.font = '16px Arial';
@@ -132,4 +131,4 @@ class QRCodeService {
   }
 }
 
-export default new QRCodeService();
+module.exports = new QRCodeService();

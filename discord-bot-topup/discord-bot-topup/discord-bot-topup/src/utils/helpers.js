@@ -1,9 +1,6 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// src/utils/helpers.js
+const fs = require('fs').promises;
+const path = require('path');
 
 class Helpers {
   static async loadConfig() {
@@ -12,7 +9,6 @@ class Helpers {
       const configData = await fs.readFile(configPath, 'utf8');
       return JSON.parse(configData);
     } catch (error) {
-      console.error('❌ Error loading config:', error);
       throw new Error('Cannot load configuration file');
     }
   }
@@ -77,11 +73,10 @@ class Helpers {
         
         if (Date.now() - stats.mtime.getTime() > maxAge) {
           await fs.unlink(filePath);
-          console.log(`🗑️ Cleaned up temp file: ${file}`);
         }
       }
     } catch (error) {
-      console.error('❌ Error cleaning temp files:', error);
+      // Silent fail for cleanup
     }
   }
 
@@ -102,7 +97,6 @@ class Helpers {
       } catch (error) {
         lastError = error;
         if (i < maxRetries - 1) {
-          console.log(`⚠️ Retry attempt ${i + 1}/${maxRetries} after ${delay}ms`);
           await this.sleep(delay);
           delay *= 2; // Exponential backoff
         }
@@ -113,4 +107,4 @@ class Helpers {
   }
 }
 
-export default Helpers;
+module.exports = Helpers;

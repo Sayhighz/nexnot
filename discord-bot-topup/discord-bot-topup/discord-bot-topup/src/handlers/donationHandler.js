@@ -1,12 +1,12 @@
-// src/handlers/donationHandler.js (Full Code - แก้ไขให้ใช้ kits)
-import databaseService from '../services/databaseService.js';
-import configService from '../services/configService.js';
-import rconManager from '../components/rconManager.js';
-import webhookService from '../services/webhookService.js';
-import BrandUtils from '../utils/brandUtils.js';
-import ValidationHelper from '../utils/validationHelper.js';
-import ErrorHandler from '../utils/errorHandler.js';
-import DebugHelper from '../utils/debugHelper.js';
+// src/handlers/donationHandler.js
+const databaseService = require('../services/databaseService');
+const configService = require('../services/configService');
+const rconManager = require('../components/rconManager');
+const webhookService = require('../services/webhookService');
+const BrandUtils = require('../utils/brandUtils');
+const ValidationHelper = require('../utils/validationHelper');
+const ErrorHandler = require('../utils/errorHandler');
+const DebugHelper = require('../utils/debugHelper');
 
 class DonationHandler {
   async executeDonation(message, ticketData, verificationResult) {
@@ -31,7 +31,7 @@ class DonationHandler {
           result = await this.giveRank(targetServer, userGameInfo.steam64, donationItem.rcon_commands);
           break;
         case 'items':
-          // ✅ แก้ไข: ใช้ kits แทน items
+          // ใช้ kits แทน items
           result = await this.giveKits(targetServer, userGameInfo.steam64, donationItem.kits);
           break;
         default:
@@ -41,7 +41,7 @@ class DonationHandler {
       // Update database
       await this.updateDonationStatus(ticketData, result);
 
-      // Send webhook notification - ✅ เพิ่ม slip image
+      // Send webhook notification - เพิ่ม slip image
       await this.sendWebhookNotification(ticketData, result, targetServer, verificationResult);
 
       return result;
@@ -74,7 +74,7 @@ class DonationHandler {
     }
   }
 
-  // ✅ แก้ไข: ใช้ giveKits แทน giveItems
+  // ใช้ giveKits แทน giveItems
   async giveKits(serverKey, steam64, kits) {
     try {
       if (!kits || !Array.isArray(kits) || kits.length === 0) {
@@ -119,7 +119,7 @@ class DonationHandler {
     }
   }
 
-  // ✅ แก้ไข: เพิ่ม slip image และ verification result
+  // เพิ่ม slip image และ verification result
   async sendWebhookNotification(ticketData, result, targetServer, verificationResult = null) {
     try {
       const webhookData = {
@@ -136,12 +136,12 @@ class DonationHandler {
         playerName: ticketData.userGameInfo.userData?.player_name || 'Unknown',
         timestamp: new Date().toISOString(),
         
-        // ✅ เพิ่มข้อมูลสำหรับแต่ละประเภท
+        // เพิ่มข้อมูลสำหรับแต่ละประเภท
         ...(ticketData.donationItem.points && { points: ticketData.donationItem.points }),
         ...(ticketData.donationItem.kits && { kits: ticketData.donationItem.kits }),
         ...(result.error && { error: result.error }),
         
-        // ✅ เพิ่มข้อมูล verification และ slip
+        // เพิ่มข้อมูล verification และ slip
         ...(verificationResult && {
           verificationData: verificationResult.data,
           slipImageUrl: verificationResult.slipImageUrl
@@ -169,7 +169,7 @@ class DonationHandler {
     return donations.find(item => item.id === donationId);
   }
 
-  // ✅ แก้ไข: validation สำหรับ kits
+  // validation สำหรับ kits
   validateDonationData(category, donationItem, userGameInfo) {
     const errors = [];
 
@@ -200,4 +200,4 @@ class DonationHandler {
   }
 }
 
-export default new DonationHandler();
+module.exports = new DonationHandler();

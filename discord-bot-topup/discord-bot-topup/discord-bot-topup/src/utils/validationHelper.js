@@ -1,5 +1,5 @@
 // src/utils/validationHelper.js
-import CONSTANTS from './constants.js';
+const CONSTANTS = require('./constants');
 
 class ValidationHelper {
   // User permissions
@@ -93,4 +93,4 @@ class ValidationHelper {
   }
 }
 
-export default ValidationHelper;
+module.exports = ValidationHelper;

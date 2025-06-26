@@ -1,30 +1,28 @@
-// src/index.js (Full Code - เอา ScoreboardManager ออกทั้งหมด)
-import { Client, GatewayIntentBits } from "discord.js";
-import configService from "./services/configService.js";
-import databaseService from "./services/databaseService.js";
-import webhookService from "./services/webhookService.js";
-import TopupSystem from "./components/topupSystem.js";
-// ❌ เอาบรรทัดนี้ออก: import ScoreboardManager from "./components/scoreboardManager.js";
-import rconManager from "./components/rconManager.js";
-import logService from "./services/logService.js";
-import slipVerification from "./components/slipVerification.js";
+// src/index.js
+const { Client, GatewayIntentBits } = require("discord.js");
+const configService = require("./services/configService");
+const databaseService = require("./services/databaseService");
+const webhookService = require("./services/webhookService");
+const TopupSystem = require("./components/topupSystem");
+const rconManager = require("./components/rconManager");
+const logService = require("./services/logService");
+const slipVerification = require("./components/slipVerification");
 
-// Import new utilities
-import ErrorHandler from "./utils/errorHandler.js";
-import DebugHelper from "./utils/debugHelper.js";
-import ResponseHelper from "./utils/responseHelper.js";
+// Import utilities
+const ErrorHandler = require("./utils/errorHandler");
+const DebugHelper = require("./utils/debugHelper");
+const ResponseHelper = require("./utils/responseHelper");
 
 class DiscordBot {
   constructor() {
     this.client = null;
     this.topupSystem = null;
-    // ❌ เอาบรรทัดนี้ออก: this.scoreboardManager = null;
     this.isShuttingDown = false;
   }
 
   async init() {
     try {
-      DebugHelper.info("Starting NEXArk Discord Bot...");
+      await logService.info("Starting NEXArk Discord Bot...");
 
       // Test and load configuration
       await this.initializeConfiguration();
@@ -44,22 +42,21 @@ class DiscordBot {
       // Login bot
       await this.loginBot();
 
-      logService.info("NEXArk Discord Bot started successfully");
+      await logService.info("NEXArk Discord Bot started successfully");
     } catch (error) {
-      DebugHelper.error("Bot startup failed:", error);
-      logService.error("Failed to start NEXArk Discord Bot:", error);
+      await logService.error("Bot startup failed:", error);
       process.exit(1);
     }
   }
 
   async initializeConfiguration() {
-    DebugHelper.info("Testing configuration file...");
+    await logService.info("Testing configuration file...");
     const configTest = await configService.testConfigFile();
     if (!configTest.success) {
       throw new Error(`Config file test failed: ${configTest.error}`);
     }
 
-    DebugHelper.info("Loading configuration...");
+    await logService.info("Loading configuration...");
     await configService.loadConfig();
 
     // Validate configuration
@@ -77,7 +74,7 @@ class DiscordBot {
           `Critical configuration errors: ${criticalErrors.join(", ")}`
         );
       } else {
-        DebugHelper.warn("Non-critical configuration warnings detected");
+        await logService.warn("Non-critical configuration warnings detected", validation.errors);
       }
     }
 
@@ -85,22 +82,20 @@ class DiscordBot {
     webhookService.reloadConfig();
     rconManager.reloadConfig();
 
-    DebugHelper.info("Configuration loaded and services reinitialized");
+    await logService.info("Configuration loaded and services reinitialized");
   }
 
   async testServices() {
-    DebugHelper.info("Testing services...");
+    await logService.info("Testing services...");
 
     // Test Slip Verification Service
-    console.log("\n🔍 Testing Slip Verification Service...");
     const slipVerificationStatus = slipVerification.getServiceStatus();
-    console.log("Slip Verification Status:", slipVerificationStatus);
+    await logService.info("Slip Verification Status:", slipVerificationStatus);
     
     if (!slipVerificationStatus.enabled) {
-      DebugHelper.warn("⚠️ EasySlip API is DISABLED - using basic validation mode");
-      DebugHelper.warn("⚠️ This will use basic file validation instead of real slip verification!");
+      await logService.warn("EasySlip API is DISABLED - using basic validation mode");
     } else {
-      DebugHelper.info("✅ EasySlip API is ENABLED and configured properly");
+      await logService.info("EasySlip API is ENABLED and configured properly");
     }
 
     // Test webhook
@@ -108,9 +103,9 @@ class DiscordBot {
     if (webhookStatus.enabled && webhookStatus.webhookUrlValid) {
       const webhookTest = await webhookService.testWebhook();
       if (webhookTest.success) {
-        DebugHelper.info("Discord webhook test successful");
+        await logService.info("Discord webhook test successful");
       } else {
-        DebugHelper.warn("Discord webhook test failed:", webhookTest.error);
+        await logService.warn("Discord webhook test failed:", webhookTest.error);
       }
     }
 
@@ -118,14 +113,14 @@ class DiscordBot {
     const rconConfig = rconManager.getConfiguration();
     if (rconConfig.totalServers > 0) {
       const testResults = await rconManager.testAllServers();
-      DebugHelper.info(
+      await logService.info(
         `RCON test results: ${testResults.successful}/${testResults.total} servers responding`
       );
     }
   }
 
   async initializeDiscordClient() {
-    DebugHelper.info("Initializing Discord client...");
+    await logService.info("Initializing Discord client...");
 
     this.client = new Client({
       intents: [
@@ -143,23 +138,20 @@ class DiscordBot {
 
     // Initialize systems
     this.topupSystem = new TopupSystem(this.client);
-    // ❌ เอาบรรทัดนี้ออก: this.scoreboardManager = new ScoreboardManager(this.client);
   }
 
   async initializeDatabase() {
-    DebugHelper.info("Connecting to database...");
+    await logService.info("Connecting to database...");
     await databaseService.connect();
     await databaseService.createTables();
-    DebugHelper.info("Database connected and tables created");
+    await logService.info("Database connected and tables created");
   }
 
   setupEventListeners() {
     // Bot ready event
     this.client.once("ready", async () => {
-      DebugHelper.info(`Bot ready! Logged in as ${this.client.user.tag}`);
-      DebugHelper.info(
-        `Connected to ${this.client.guilds.cache.size} guild(s)`
-      );
+      await logService.info(`Bot ready! Logged in as ${this.client.user.tag}`);
+      await logService.info(`Connected to ${this.client.guilds.cache.size} guild(s)`);
 
       // Set bot status
       this.client.user.setActivity("NEXArk Donation System", {
@@ -168,16 +160,14 @@ class DiscordBot {
 
       try {
         await this.topupSystem.init();
-        // ❌ เอาบรรทัดนี้ออก: await this.scoreboardManager.init();
-
-        DebugHelper.info("All systems initialized successfully!");
+        await logService.info("All systems initialized successfully!");
 
         // Send startup notification
         if (webhookService.getServiceStatus().enabled) {
           await this.sendStartupNotification();
         }
       } catch (error) {
-        DebugHelper.error("System initialization failed:", error);
+        await logService.error("System initialization failed:", error);
       }
     });
 
@@ -193,21 +183,6 @@ class DiscordBot {
 
       try {
         if (interaction.isButton()) {
-          DebugHelper.log("Button interaction received in main handler", {
-            customId: interaction.customId,
-            userId: interaction.user.id,
-          });
-
-          // ❌ เอาส่วนนี้ออก:
-          // if (interaction.customId.startsWith("scoreboard_")) {
-          //   await this.scoreboardManager.handleScoreboardNavigation(
-          //     interaction
-          //   );
-          // } else {
-          //   await this.topupSystem.handleButtonInteraction(interaction);
-          // }
-
-          // ✅ แก้เป็น:
           await this.topupSystem.handleButtonInteraction(interaction);
         } else if (interaction.isStringSelectMenu()) {
           await this.topupSystem.handleSelectMenuInteraction(interaction);
@@ -238,30 +213,30 @@ class DiscordBot {
           await this.topupSystem.handleSlipSubmission(message);
         }
       } catch (error) {
-        DebugHelper.error("Message handling error:", error);
+        await logService.error("Message handling error:", error);
       }
     });
 
     // Guild events
-    this.client.on("guildCreate", (guild) => {
-      DebugHelper.info(`Joined new guild: ${guild.name} (${guild.id})`);
+    this.client.on("guildCreate", async (guild) => {
+      await logService.info(`Joined new guild: ${guild.name} (${guild.id})`);
     });
 
-    this.client.on("guildDelete", (guild) => {
-      DebugHelper.info(`Left guild: ${guild.name} (${guild.id})`);
+    this.client.on("guildDelete", async (guild) => {
+      await logService.info(`Left guild: ${guild.name} (${guild.id})`);
     });
 
     // Error handling
-    this.client.on("error", (error) => {
-      DebugHelper.error("Discord.js error:", error);
+    this.client.on("error", async (error) => {
+      await logService.error("Discord.js error:", error);
     });
 
-    this.client.on("warn", (warning) => {
-      DebugHelper.warn("Discord.js warning:", warning);
+    this.client.on("warn", async (warning) => {
+      await logService.warn("Discord.js warning:", warning);
     });
 
-    this.client.rest.on("rateLimited", (rateLimitInfo) => {
-      DebugHelper.warn("Rate limited:", rateLimitInfo);
+    this.client.rest.on("rateLimited", async (rateLimitInfo) => {
+      await logService.warn("Rate limited:", rateLimitInfo);
     });
   }
 
@@ -269,18 +244,12 @@ class DiscordBot {
     try {
       const { commandName } = interaction;
 
-      DebugHelper.log(
-        `Slash command: /${commandName} by ${interaction.user.tag}`
-      );
+      await logService.info(`Slash command: /${commandName} by ${interaction.user.tag}`);
 
       switch (commandName) {
         case "setup_menu":
           await this.handleSetupMenuCommand(interaction);
           break;
-        // ❌ เอา case นี้ออก:
-        // case "setup_scoreboard":
-        //   await this.handleSetupScoreboardCommand(interaction);
-        //   break;
         case "test_webhook":
           await this.handleTestWebhookCommand(interaction);
           break;
@@ -322,27 +291,6 @@ class DiscordBot {
       await interaction.editReply("❌ เกิดข้อผิดพลาดในการตั้งค่าเมนู");
     }
   }
-
-  // ❌ เอา method นี้ออกทั้งหมด:
-  // async handleSetupScoreboardCommand(interaction) {
-  //   if (!interaction.member.permissions.has("Administrator")) {
-  //     return await ResponseHelper.safeReply(
-  //       interaction,
-  //       "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้"
-  //     );
-  //   }
-  //
-  //   await ResponseHelper.safeDefer(interaction);
-  //
-  //   try {
-  //     await this.scoreboardManager.setupPermanentScoreboard(
-  //       interaction.channel
-  //     );
-  //     await interaction.editReply("✅ ตั้งค่า Scoreboard เรียบร้อยแล้ว");
-  //   } catch (error) {
-  //     await interaction.editReply("❌ เกิดข้อผิดพลาดในการตั้งค่า Scoreboard");
-  //   }
-  // }
 
   async handleTestWebhookCommand(interaction) {
     if (!interaction.member.permissions.has("Administrator")) {
@@ -423,26 +371,10 @@ class DiscordBot {
 ⚙️ **Validation Mode:** \`${slipStatus.validationMode}\`
 🌐 **API URL:** ${slipStatus.apiUrl || 'Not set'}
 
-**📋 Configuration Details:**
-\`\`\`json
-{
-  "enabled": ${config.enabled || false},
-  "api_key": "${config.api_key ? config.api_key.substring(0, 10) + '...' : 'NOT_SET'}",
-  "api_url": "${config.api_url || 'NOT_SET'}"
-}
-\`\`\`
-
 **🔧 Status Explanation:**
 ${slipStatus.enabled 
   ? '✅ **EasySlip API Active:** ใช้การตรวจสอบสลิปแบบแม่นยำผ่าน API' 
   : '⚠️ **Basic Validation Mode:** ใช้การตรวจสอบไฟล์พื้นฐาน (ไม่แม่นยำ)'}
-
-${!slipStatus.enabled ? 
-`**📝 วิธีแก้ไข:**
-1. ตรวจสอบ \`config/config.json\` ในส่วน \`easyslip\`
-2. ตั้งค่า \`"enabled": true\`
-3. ใส่ API Key จริงใน \`"api_key"\`
-4. รีสตาร์ท bot` : ''}
       `;
 
       await interaction.editReply(statusMessage);
@@ -497,7 +429,7 @@ ${!slipStatus.enabled ?
 
   async loginBot() {
     const token = configService.getDiscordToken();
-    DebugHelper.info("Logging in to Discord...");
+    await logService.info("Logging in to Discord...");
     await this.client.login(token);
   }
 
@@ -524,14 +456,14 @@ ${!slipStatus.enabled ?
 
       await webhookService.sendDonationNotification(notificationData);
     } catch (error) {
-      DebugHelper.error("Error sending startup notification:", error);
+      await logService.error("Error sending startup notification:", error);
     }
   }
 
   async gracefulShutdown() {
     if (this.isShuttingDown) return;
 
-    DebugHelper.info("Initiating graceful shutdown...");
+    await logService.info("Initiating graceful shutdown...");
     this.isShuttingDown = true;
 
     try {
@@ -544,11 +476,6 @@ ${!slipStatus.enabled ?
       if (this.topupSystem) {
         await this.topupSystem.shutdown();
       }
-
-      // ❌ เอาส่วนนี้ออก:
-      // if (this.scoreboardManager) {
-      //   this.scoreboardManager.shutdown();
-      // }
 
       if (rconManager) {
         await rconManager.shutdown();
@@ -564,9 +491,9 @@ ${!slipStatus.enabled ?
         this.client.destroy();
       }
 
-      DebugHelper.info("Graceful shutdown completed");
+      await logService.info("Graceful shutdown completed");
     } catch (error) {
-      DebugHelper.error("Error during shutdown:", error);
+      await logService.error("Error during shutdown:", error);
     }
   }
 
@@ -589,7 +516,7 @@ ${!slipStatus.enabled ?
 
       await webhookService.sendDonationNotification(notificationData);
     } catch (error) {
-      DebugHelper.error("Error sending shutdown notification:", error);
+      await logService.error("Error sending shutdown notification:", error);
     }
   }
 }
@@ -600,24 +527,24 @@ bot.init();
 
 // Graceful shutdown handlers
 process.on("SIGINT", async () => {
-  DebugHelper.info("Received SIGINT, shutting down gracefully...");
+  await logService.info("Received SIGINT, shutting down gracefully...");
   await bot.gracefulShutdown();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
-  DebugHelper.info("Received SIGTERM, shutting down gracefully...");
+  await logService.info("Received SIGTERM, shutting down gracefully...");
   await bot.gracefulShutdown();
   process.exit(0);
 });
 
-process.on("unhandledRejection", (error) => {
-  DebugHelper.error("Unhandled promise rejection:", error);
+process.on("unhandledRejection", async (error) => {
+  await logService.error("Unhandled promise rejection:", error);
 });
 
-process.on("uncaughtException", (error) => {
-  DebugHelper.error("Uncaught exception:", error);
+process.on("uncaughtException", async (error) => {
+  await logService.error("Uncaught exception:", error);
   setTimeout(() => process.exit(1), 1000);
 });
 
-export default DiscordBot;
+module.exports = DiscordBot;

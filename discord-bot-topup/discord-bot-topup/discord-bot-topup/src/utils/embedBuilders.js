@@ -1,10 +1,10 @@
-// src/utils/embedBuilders.js (Full Code ที่แก้ไขแล้ว)
-import { EmbedBuilder } from 'discord.js';
-import BrandUtils from './brandUtils.js';
-import Helpers from './helpers.js';
+// src/utils/embedBuilders.js
+const { EmbedBuilder } = require('discord.js');
+const BrandUtils = require('./brandUtils');
+const Helpers = require('./helpers');
 
 class EmbedBuilders {
-  // ✅ ปรับ Main Menu ให้เรียบง่าย
+  // ปรับ Main Menu ให้เรียบง่าย
   static createMainMenuEmbed() {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.primary)
@@ -24,7 +24,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ No Link Embed ให้ชัดเจน
+  // ปรับ No Link Embed ให้ชัดเจน
   static createNoLinkEmbed(linkChannelId) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
@@ -51,7 +51,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Category Selection ให้เรียบง่าย
+  // ปรับ Category Selection ให้เรียบง่าย
   static createCategorySelectionEmbed(category, userGameInfo, activeDonationTickets, maxTickets, donations) {
     const categoryIcon = BrandUtils.categoryIcons[category];
     const categoryDisplayName = BrandUtils.categoryDisplayNames[category];
@@ -78,7 +78,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Temporary Steam ID Embed
+  // ปรับ Temporary Steam ID Embed
   static createTemporarySteamIdEmbed(category, steamId, activeDonationTickets, maxTickets, donations) {
     const categoryIcon = BrandUtils.categoryIcons[category];
     const categoryDisplayName = BrandUtils.categoryDisplayNames[category];
@@ -96,7 +96,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Donation Ticket Embed ให้เรียบง่าย
+  // ปรับ Donation Ticket Embed ให้เรียบง่าย
   static createDonationTicketEmbed(ticketId, donationItem, category, userGameInfo, config) {
     const categoryIcon = BrandUtils.getCategoryIcon(category);
 
@@ -129,7 +129,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Processing Embed
+  // ปรับ Processing Embed
   static createProcessingSlipEmbed(ticketData, attachment) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
@@ -145,7 +145,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Success Embed
+  // ปรับ Success Embed
   static createSlipVerificationSuccessEmbed(verificationData, ticketData) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.success)
@@ -161,7 +161,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ เพิ่ม function ที่ขาดหายไป
+  // เพิ่ม function ที่ขาดหายไป
   static createExecutingDonationEmbed(ticketData) {
     const categoryIcon = BrandUtils.getCategoryIcon(ticketData.category);
     
@@ -178,7 +178,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Completed Embed
+  // ปรับ Completed Embed
   static createDonationCompletedEmbed(ticketData, category, donationItem) {
     const categoryIcon = BrandUtils.getCategoryIcon(category);
     
@@ -220,7 +220,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ เพิ่ม function สำหรับยกเลิก
+  // เพิ่ม function สำหรับยกเลิก
   static createCancelDonationEmbed(ticketId) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
@@ -236,7 +236,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Error Embeds
+  // ปรับ Error Embeds
   static createErrorEmbed(title, description) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.error)
@@ -255,7 +255,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ ปรับ Max Ticket Embed
+  // ปรับ Max Ticket Embed
   static createMaxTicketEmbed(activeDonationTickets, maxTickets) {
     return new EmbedBuilder()
       .setColor(BrandUtils.brandColors.warning)
@@ -272,7 +272,7 @@ class EmbedBuilders {
       .setTimestamp();
   }
 
-  // ✅ เพิ่ม Embed สำหรับเลือกระหว่าง Link และ Manual
+  // เพิ่ม Embed สำหรับเลือกระหว่าง Link และ Manual
   static createChooseInputMethodEmbed(category) {
     const categoryIcon = BrandUtils.getCategoryIcon(category);
     const categoryName = BrandUtils.getCategoryName(category);
@@ -296,4 +296,4 @@ class EmbedBuilders {
   }
 }
 
-export default EmbedBuilders;
+module.exports = EmbedBuilders;

@@ -1,11 +1,6 @@
 // src/services/configService.js
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import DebugHelper from '../utils/debugHelper.js'; // ✅ เพิ่ม import นี้
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const fs = require('fs').promises;
+const path = require('path');
 
 class ConfigService {
   constructor() {
@@ -16,55 +11,42 @@ class ConfigService {
 
   async loadConfig() {
     try {
-      console.log('📁 Loading config from:', this.configPath);
-      
       // ตรวจสอบว่าไฟล์มีอยู่หรือไม่
       try {
         await fs.access(this.configPath);
-        console.log('✅ Config file exists');
-        
-        // ตรวจสอบขนาดไฟล์
         const stats = await fs.stat(this.configPath);
-        console.log('📊 File size:', stats.size, 'bytes');
         
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ Config file exists, size:', stats.size, 'bytes');
+        }
       } catch (error) {
-        console.error('❌ Config file not found:', this.configPath);
         throw new Error(`Configuration file not found at: ${this.configPath}`);
       }
   
       const configData = await fs.readFile(this.configPath, 'utf8');
-      console.log('📄 Config file read successfully, size:', configData.length, 'bytes');
-      
       this.config = JSON.parse(configData);
       this.loadedAt = new Date();
       
-      console.log('✅ Configuration loaded successfully');
-      console.log('📊 Config sections found:', Object.keys(this.config));
-      
-      // Debug EasySlip section specifically
-      console.log('🔍 EasySlip section debug:');
-      console.log('  - easyslip exists:', !!this.config.easyslip);
-      console.log('  - easyslip content:', JSON.stringify(this.config.easyslip, null, 2));
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Configuration loaded successfully');
+        console.log('📊 Config sections found:', Object.keys(this.config));
+      }
       
       return this.config;
     } catch (error) {
-      console.error('❌ Error loading configuration:', error);
       if (error.name === 'SyntaxError') {
-        console.error('❌ JSON Syntax Error in config file. Please check your config.json syntax.');
-        console.error('❌ Error details:', error.message);
+        throw new Error('JSON Syntax Error in config file: ' + error.message);
       }
       throw new Error('Cannot load configuration file: ' + error.message);
     }
   }
 
   async reloadConfig() {
-    console.log('🔄 Reloading configuration...');
     return await this.loadConfig();
   }
 
   getConfig() {
     if (!this.config) {
-      console.error('❌ Configuration not loaded. Call loadConfig() first.');
       throw new Error('Configuration not loaded. Call loadConfig() first.');
     }
     return this.config;
@@ -93,62 +75,25 @@ class ConfigService {
   // RCON Servers configuration
   getRconServersConfig() {
     const config = this.getConfig();
-    const rconServers = config.rcon_servers || {};
-    console.log('🎮 Getting RCON servers config:', Object.keys(rconServers));
-    return rconServers;
+    return config.rcon_servers || {};
   }
 
   // Discord Webhook configuration
   getDiscordWebhookConfig() {
     const config = this.getConfig();
-    const webhookConfig = config.discord_webhook || {};
-    console.log('📢 Getting webhook config:', {
-      enabled: webhookConfig.enabled,
-      hasUrl: !!webhookConfig.donation_webhook_url
-    });
-    return webhookConfig;
+    return config.discord_webhook || {};
   }
 
-  // RCON configuration (legacy)
-  getRconConfig() {
-    const config = this.getConfig();
-    return config.rcon || {};
-  }
-
-  // ✅ แก้ไข EasySlip configuration
+  // EasySlip configuration
   getEasySlipConfig() {
-  const config = this.getConfig();
-  
-  // ✅ เพิ่ม debug ละเอียด
-  console.log('🔍 ConfigService Debug:', {
-    configExists: !!config,
-    configKeys: config ? Object.keys(config) : [],
-    hasEasyslip: !!(config && config.easyslip),
-    easyslipRaw: config ? config.easyslip : null
-  });
-  
-  if (!config) {
-    console.error('❌ No config loaded in ConfigService');
-    return {};
+    const config = this.getConfig();
+    
+    if (!config.easyslip) {
+      return {};
+    }
+    
+    return config.easyslip;
   }
-  
-  if (!config.easyslip) {
-    console.error('❌ No easyslip section in config');
-    console.log('Available sections:', Object.keys(config));
-    return {};
-  }
-  
-  const easyslipConfig = config.easyslip;
-  
-  console.log('✅ EasySlip config found:', {
-    enabled: easyslipConfig.enabled,
-    hasApiKey: !!easyslipConfig.api_key,
-    apiKeyLength: easyslipConfig.api_key ? easyslipConfig.api_key.length : 0,
-    hasApiUrl: !!easyslipConfig.api_url
-  });
-  
-  return easyslipConfig;
-}
 
   // Packages configuration
   getPackages() {
@@ -191,14 +136,12 @@ class ConfigService {
         if (value && typeof value === 'object' && key in value) {
           value = value[key];
         } else {
-          console.warn(`⚠️ Config path not found: ${path}, using default:`, defaultValue);
           return defaultValue;
         }
       }
       
       return value;
     } catch (error) {
-      console.warn(`⚠️ Error getting config path ${path}:`, error.message);
       return defaultValue;
     }
   }
@@ -241,7 +184,7 @@ class ConfigService {
       const rconServers = config.rcon_servers || {};
       const enabledServers = Object.values(rconServers).filter(s => s && s.enabled);
       if (enabledServers.length === 0) {
-        console.warn('⚠️ No RCON servers enabled');
+        // Note: This is warning, not error
       } else {
         for (const [key, server] of Object.entries(rconServers)) {
           if (server && server.enabled) {
@@ -308,23 +251,15 @@ class ConfigService {
   // Test config file accessibility
   async testConfigFile() {
     try {
-      console.log('🧪 Testing config file access...');
-      
       // Test file existence
       await fs.access(this.configPath);
-      console.log('✅ Config file exists');
       
       // Test file readability
       const stats = await fs.stat(this.configPath);
-      console.log('📊 Config file stats:', {
-        size: stats.size,
-        modified: stats.mtime
-      });
       
       // Test JSON parsing
       const configData = await fs.readFile(this.configPath, 'utf8');
       const parsedConfig = JSON.parse(configData);
-      console.log('✅ Config file is valid JSON');
       
       return {
         success: true,
@@ -336,7 +271,6 @@ class ConfigService {
       };
       
     } catch (error) {
-      console.error('❌ Config file test failed:', error);
       return {
         success: false,
         error: error.message
@@ -345,4 +279,4 @@ class ConfigService {
   }
 }
 
-export default new ConfigService();
+module.exports = new ConfigService();

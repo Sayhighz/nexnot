@@ -1,4 +1,5 @@
-export const dbConfig = {
+// config/database.js
+const dbConfig = {
   host: process.env.DATABASE_HOST || 'localhost',
   user: process.env.DATABASE_USER || 'root',
   password: process.env.DATABASE_PASSWORD || '',
@@ -10,7 +11,7 @@ export const dbConfig = {
   reconnect: true
 };
 
-export const tableSchemas = {
+const tableSchemas = {
   topup_logs: `
     CREATE TABLE IF NOT EXISTS topup_logs (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -65,4 +66,4 @@ export const tableSchemas = {
   `
 };
 
-export default { dbConfig, tableSchemas };
+module.exports = { dbConfig, tableSchemas };

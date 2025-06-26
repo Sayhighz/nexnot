@@ -1,11 +1,11 @@
 // src/utils/errorHandler.js
-import logService from '../services/logService.js';
-import ResponseHelper from './responseHelper.js';
+const logService = require('../services/logService');
+const ResponseHelper = require('./responseHelper');
 
 class ErrorHandler {
   static async handleInteractionError(error, interaction, operation = 'unknown') {
     // Log error
-    logService.error(`Interaction error in ${operation}:`, {
+    await logService.error(`Interaction error in ${operation}:`, {
       error: error.message,
       stack: error.stack,
       userId: interaction.user?.id,
@@ -60,4 +60,4 @@ class ErrorHandler {
   }
 }
 
-export default ErrorHandler;
+module.exports = ErrorHandler;

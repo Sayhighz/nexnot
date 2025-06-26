@@ -3,13 +3,14 @@
   "version": "1.0.0",
   "description": "Discord bot for automatic topup system with ARK server integration",
   "main": "src/index.js",
-  "type": "module",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node src/test.js",
-    "setup": "node scripts/setup.js",
-    "build": "node scripts/build.js"
+    "build": "pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --output dist/nexark-bot",
+    "build-win": "pkg . --targets node18-win-x64 --output dist/nexark-bot-win.exe",
+    "bundle": "esbuild src/index.js --bundle --outfile=build/index.js --format=cjs --platform=node --external:sharp --external:canvas --external:mysql2",
+    "pkg-bundle": "npm run bundle && pkg build/index.js --targets node18-win-x64 --output dist/nexark-bot-bundled.exe"
   },
   "keywords": [
     "discord",
@@ -34,9 +35,16 @@
     "sharp": "^0.33.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "esbuild": "^0.19.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "pkg": {
+    "scripts": ["src/**/*.js"],
+    "assets": ["config/**/*", "logs/**/*"],
+    "targets": ["node18-win-x64"],
+    "outputPath": "dist"
   }
 }

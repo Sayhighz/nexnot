@@ -1,6 +1,6 @@
 // src/utils/responseHelper.js
-import { EmbedBuilder } from 'discord.js';
-import BrandUtils from './brandUtils.js';
+const { EmbedBuilder } = require('discord.js');
+const BrandUtils = require('./brandUtils');
 
 class ResponseHelper {
   static async safeReply(interaction, content, options = {}) {
@@ -90,4 +90,4 @@ class ResponseHelper {
   }
 }
 
-export default ResponseHelper;
+module.exports = ResponseHelper;

@@ -1,6 +1,5 @@
-// src/services/databaseService.js (Full Code - ปรับปรุง Connection Handling)
-import mysql from "mysql2/promise";
-import configService from "./configService.js";
+// src/services/databaseService.js (CommonJS Version)
+const mysql = require("mysql2/promise");
 
 class DatabaseService {
   constructor() {
@@ -9,13 +8,23 @@ class DatabaseService {
     this.connectionRetries = 0;
     this.maxRetries = 3;
     this.retryDelay = 5000; // 5 seconds
+    this.configService = null;
+  }
+
+  // เพิ่ม method สำหรับ set config service
+  setConfigService(configService) {
+    this.configService = configService;
   }
 
   async connect() {
     try {
-      const dbConfig = configService.getDatabaseConfig();
+      if (!this.configService) {
+        throw new Error("ConfigService not initialized");
+      }
 
-      // สร้าง connection pool แทน single connection
+      const dbConfig = this.configService.getDatabaseConfig();
+
+      // สร้าง connection pool
       this.pool = mysql.createPool({
         host: dbConfig.host,
         user: dbConfig.user,
@@ -31,7 +40,6 @@ class DatabaseService {
         maxIdle: 5,
         enableKeepAlive: true,
         keepAliveInitialDelay: 0,
-        // ✅ เพิ่ม settings สำหรับ connection stability
         supportBigNumbers: true,
         bigNumberStrings: true,
         multipleStatements: false,
@@ -76,7 +84,6 @@ class DatabaseService {
     }
   }
 
-  // ✅ เพิ่ม method สำหรับ reconnect
   async reconnect() {
     console.log("🔄 Attempting to reconnect to database...");
     
@@ -95,7 +102,6 @@ class DatabaseService {
     await this.connect();
   }
 
-  // ✅ ปรับปรุง executeQuery ให้มี retry mechanism
   async executeQuery(query, params = [], maxRetries = 3) {
     let lastError;
     
@@ -122,7 +128,6 @@ class DatabaseService {
             console.error("Failed to reconnect:", reconnectError.message);
           }
         } else {
-          // ถ้าไม่ใช่ connection error หรือหมด retry แล้ว ให้ throw error
           break;
         }
       } finally {
@@ -135,7 +140,6 @@ class DatabaseService {
     throw lastError;
   }
 
-  // ✅ เพิ่ม method ตรวจสอบ connection error
   isConnectionError(error) {
     const connectionErrorCodes = [
       'ECONNRESET',
@@ -154,7 +158,6 @@ class DatabaseService {
     );
   }
 
-  // เดิมที่มีอยู่แล้ว (ไม่ต้องแก้ไข)
   safeParseJSON(data) {
     try {
       if (typeof data === "string") {
@@ -218,10 +221,7 @@ class DatabaseService {
   async getCharacterIdFromSteam64(steam64) {
     try {
       const playerData = await this.getPlayerData(steam64);
-      if (
-        playerData &&
-        playerData.parsedData?.entityInfo?.MostRecentCharacterId
-      ) {
+      if (playerData && playerData.parsedData?.entityInfo?.MostRecentCharacterId) {
         return playerData.parsedData.entityInfo.MostRecentCharacterId;
       }
       return null;
@@ -331,8 +331,6 @@ class DatabaseService {
     }
   }
 
-
-  // ส่วนอื่นๆ ยังเหมือนเดิม (logDonationTransaction, updateTopupStatus, etc.)
   async logDonationTransaction(data) {
     const query = `
       INSERT INTO topup_logs 
@@ -412,8 +410,7 @@ class DatabaseService {
   }
 
   async saveSlipHash(slipHash, discordId, amount) {
-    const query =
-      "INSERT INTO slip_hashes (slip_hash, discord_id, amount) VALUES (?, ?, ?)";
+    const query = "INSERT INTO slip_hashes (slip_hash, discord_id, amount) VALUES (?, ?, ?)";
     try {
       await this.executeQuery(query, [slipHash, discordId, amount]);
     } catch (error) {
@@ -438,12 +435,7 @@ class DatabaseService {
     }
   }
 
-  async createActiveTicket(
-    discordId,
-    channelId,
-    ticketId,
-    ticketType = "donation"
-  ) {
+  async createActiveTicket(discordId, channelId, ticketId, ticketType = "donation") {
     const query = `
       INSERT INTO active_tickets (discord_id, channel_id, ticket_id, ticket_type)
       VALUES (?, ?, ?, ?)
@@ -486,28 +478,12 @@ class DatabaseService {
     }
   }
 
-  async getActiveSupportTickets(discordId) {
-    const query = `
-    SELECT * FROM active_tickets 
-    WHERE discord_id = ? AND status = 'active' AND ticket_type = 'support'
-    ORDER BY created_at DESC
-  `;
-
-    try {
-      const rows = await this.executeQuery(query, [discordId]);
-      return rows;
-    } catch (error) {
-      console.error("❌ Error getting active support tickets:", error);
-      throw error;
-    }
-  }
-
   async getActiveDonationTickets(discordId) {
     const query = `
-    SELECT * FROM active_tickets 
-    WHERE discord_id = ? AND status = 'active' AND ticket_type = 'donation'
-    ORDER BY created_at DESC
-  `;
+      SELECT * FROM active_tickets 
+      WHERE discord_id = ? AND status = 'active' AND ticket_type = 'donation'
+      ORDER BY created_at DESC
+    `;
 
     try {
       const rows = await this.executeQuery(query, [discordId]);
@@ -555,84 +531,6 @@ class DatabaseService {
     }
   }
 
-  async getOnlinePlayersInServer(serverKey) {
-    const query = `
-    SELECT guid, data 
-    FROM ngc_players 
-    WHERE JSON_EXTRACT(data, '$.entityInfo.Status') = 'ONLINE'
-    AND JSON_EXTRACT(data, '$.entityInfo.ServerKey') = ?
-  `;
-
-    try {
-      const rows = await this.executeQuery(query, [serverKey]);
-      return rows.map((row) => {
-        const parsedData = this.safeParseJSON(row.data);
-        return {
-          steam64: row.guid,
-          playerName: parsedData.entityInfo?.Name,
-          characterId: parsedData.entityInfo?.MostRecentCharacterId,
-          lastJoinTime: parsedData.entityInfo?.LastJoinTime,
-          ipAddress: parsedData.entityInfo?.IpAddress,
-          totalPlayTime: parsedData.entityInfo?.TotalTimePlayedSecs,
-        };
-      });
-    } catch (error) {
-      console.error("❌ Error getting online players in server:", error);
-      throw error;
-    }
-  }
-
-  async getServerPlayerCounts() {
-    const query = `
-    SELECT 
-      JSON_EXTRACT(data, '$.entityInfo.ServerKey') as serverKey,
-      COUNT(*) as playerCount
-    FROM ngc_players 
-    WHERE JSON_EXTRACT(data, '$.entityInfo.Status') = 'ONLINE'
-    GROUP BY JSON_EXTRACT(data, '$.entityInfo.ServerKey')
-  `;
-
-    try {
-      const rows = await this.executeQuery(query);
-      const result = {};
-      rows.forEach((row) => {
-        const serverKey = row.serverKey?.replace(/"/g, "");
-        if (serverKey) {
-          result[serverKey] = parseInt(row.playerCount);
-        }
-      });
-      return result;
-    } catch (error) {
-      console.error("❌ Error getting server player counts:", error);
-      throw error;
-    }
-  }
-
-  async getPlayerServerHistory(steam64, limit = 10) {
-    const query = "SELECT * FROM ngc_players WHERE guid = ?";
-    try {
-      const rows = await this.executeQuery(query, [steam64]);
-      if (rows.length > 0) {
-        const playerData = rows[0];
-        const parsedData = this.safeParseJSON(playerData.data);
-
-        return {
-          currentServer: parsedData.entityInfo?.ServerKey,
-          previousServer: parsedData.entityInfo?.PreviousServerKey,
-          lastJoinTime: parsedData.entityInfo?.LastJoinTime,
-          lastLogoutTime: parsedData.entityInfo?.LastLogoutTime,
-          totalPlayTime: parsedData.entityInfo?.TotalTimePlayedSecs,
-          isOnline: parsedData.entityInfo?.Status === "ONLINE",
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error("❌ Error getting player server history:", error);
-      throw error;
-    }
-  }
-
-  // ✅ ปรับปรุง healthCheck ให้ดีขึ้น
   async healthCheck() {
     try {
       const connection = await this.getConnection();
@@ -664,4 +562,7 @@ class DatabaseService {
   }
 }
 
-export default new DatabaseService();
+// สร้าง singleton instance
+const databaseService = new DatabaseService();
+
+module.exports = databaseService;
