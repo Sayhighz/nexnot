@@ -124,9 +124,20 @@ class ConfigService {
 
   // EasySlip configuration
   getEasySlipConfig() {
-    const config = this.getConfig();
-    return config.easyslip || {};
-  }
+  const config = this.getConfig();
+  const easyslipConfig = config.easyslip || {};
+  
+  console.log('🔍 ConfigService getEasySlipConfig debug:', {
+    fullConfig: !!config,
+    hasEasyslipSection: !!config.easyslip,
+    easyslipConfig: easyslipConfig,
+    enabled: easyslipConfig.enabled,
+    hasApiKey: !!easyslipConfig.api_key,
+    apiKeyLength: easyslipConfig.api_key ? easyslipConfig.api_key.length : 0
+  });
+  
+  return easyslipConfig;
+}
 
   // Packages configuration
   getPackages() {
