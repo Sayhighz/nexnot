@@ -1,4 +1,4 @@
-// src/index.js (Refactored)
+// src/index.js (Full Code - รวมการแก้ไขทั้งหมด)
 import { Client, GatewayIntentBits } from "discord.js";
 import configService from "./services/configService.js";
 import databaseService from "./services/databaseService.js";
@@ -7,7 +7,7 @@ import TopupSystem from "./components/topupSystem.js";
 import ScoreboardManager from "./components/scoreboardManager.js";
 import rconManager from "./components/rconManager.js";
 import logService from "./services/logService.js";
-// import slipVerification from "./components/slipVerification.js";
+import slipVerification from "./components/slipVerification.js"; // ✅ เปิดการใช้งาน
 
 // Import new utilities
 import ErrorHandler from "./utils/errorHandler.js";
@@ -52,7 +52,7 @@ class DiscordBot {
     }
   }
 
-    async initializeConfiguration() {
+  async initializeConfiguration() {
     DebugHelper.info("Testing configuration file...");
     const configTest = await configService.testConfigFile();
     if (!configTest.success) {
@@ -85,17 +85,23 @@ class DiscordBot {
     webhookService.reloadConfig();
     rconManager.reloadConfig();
 
-
     DebugHelper.info("Configuration loaded and services reinitialized");
   }
 
   async testServices() {
     DebugHelper.info("Testing services...");
 
-    // ✅ แก้ไข: เปลี่ยนเป็น getServiceStatus
+    // ✅ เพิ่มการทดสอบ Slip Verification Service
     console.log("\n🔍 Testing Slip Verification Service...");
     const slipVerificationStatus = slipVerification.getServiceStatus();
     console.log("Slip Verification Status:", slipVerificationStatus);
+    
+    if (!slipVerificationStatus.enabled) {
+      DebugHelper.warn("⚠️ EasySlip API is DISABLED - using basic validation mode");
+      DebugHelper.warn("⚠️ This will use basic file validation instead of real slip verification!");
+    } else {
+      DebugHelper.info("✅ EasySlip API is ENABLED and configured properly");
+    }
 
     // Test webhook
     const webhookStatus = webhookService.getServiceStatus();
@@ -147,30 +153,6 @@ class DiscordBot {
     DebugHelper.info("Database connected and tables created");
   }
 
-  async testServices() {
-    DebugHelper.info("Testing services...");
-
-    // Test webhook
-    const webhookStatus = webhookService.getServiceStatus();
-    if (webhookStatus.enabled && webhookStatus.webhookUrlValid) {
-      const webhookTest = await webhookService.testWebhook();
-      if (webhookTest.success) {
-        DebugHelper.info("Discord webhook test successful");
-      } else {
-        DebugHelper.warn("Discord webhook test failed:", webhookTest.error);
-      }
-    }
-
-    // Test RCON
-    const rconConfig = rconManager.getConfiguration();
-    if (rconConfig.totalServers > 0) {
-      const testResults = await rconManager.testAllServers();
-      DebugHelper.info(
-        `RCON test results: ${testResults.successful}/${testResults.total} servers responding`
-      );
-    }
-  }
-
   setupEventListeners() {
     // Bot ready event
     this.client.once("ready", async () => {
@@ -211,7 +193,6 @@ class DiscordBot {
 
       try {
         if (interaction.isButton()) {
-          // ✅ เพิ่ม debug สำหรับ button interactions
           DebugHelper.log("Button interaction received in main handler", {
             customId: interaction.customId,
             userId: interaction.user.id,
@@ -300,6 +281,9 @@ class DiscordBot {
           break;
         case "test_rcon":
           await this.handleTestRconCommand(interaction);
+          break;
+        case "test_easyslip":  // ✅ เพิ่มคำสั่งใหม่
+          await this.handleTestEasySlipCommand(interaction);
           break;
         case "bot_status":
           await this.handleBotStatusCommand(interaction);
@@ -411,6 +395,57 @@ class DiscordBot {
     }
   }
 
+  // ✅ เพิ่ม method ใหม่สำหรับทดสอบ EasySlip
+  async handleTestEasySlipCommand(interaction) {
+    if (!interaction.member.permissions.has("Administrator")) {
+      return await ResponseHelper.safeReply(
+        interaction,
+        "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้"
+      );
+    }
+
+    await ResponseHelper.safeDefer(interaction);
+
+    try {
+      const slipStatus = slipVerification.getServiceStatus();
+      const config = configService.get('easyslip', {});
+      
+      const statusMessage = `
+**🔍 EasySlip API Status Report:**
+
+📊 **Current Status:** ${slipStatus.enabled ? '🟢 ENABLED' : '🔴 DISABLED'}
+🔑 **API Key Status:** ${slipStatus.apiKeyValid ? '✅ Valid' : '❌ Invalid/Missing'}
+⚙️ **Validation Mode:** \`${slipStatus.validationMode}\`
+🌐 **API URL:** ${slipStatus.apiUrl || 'Not set'}
+
+**📋 Configuration Details:**
+\`\`\`json
+{
+  "enabled": ${config.enabled || false},
+  "api_key": "${config.api_key ? config.api_key.substring(0, 10) + '...' : 'NOT_SET'}",
+  "api_url": "${config.api_url || 'NOT_SET'}"
+}
+\`\`\`
+
+**🔧 Status Explanation:**
+${slipStatus.enabled 
+  ? '✅ **EasySlip API Active:** ใช้การตรวจสอบสลิปแบบแม่นยำผ่าน API' 
+  : '⚠️ **Basic Validation Mode:** ใช้การตรวจสอบไฟล์พื้นฐาน (ไม่แม่นยำ)'}
+
+${!slipStatus.enabled ? 
+`**📝 วิธีแก้ไข:**
+1. ตรวจสอบ \`config/config.json\` ในส่วน \`easyslip\`
+2. ตั้งค่า \`"enabled": true\`
+3. ใส่ API Key จริงใน \`"api_key"\`
+4. รีสตาร์ท bot` : ''}
+      `;
+
+      await interaction.editReply(statusMessage);
+    } catch (error) {
+      await interaction.editReply("❌ เกิดข้อผิดพลาดในการตรวจสอบสถานะ EasySlip");
+    }
+  }
+
   async handleBotStatusCommand(interaction) {
     if (!interaction.member.permissions.has("Administrator")) {
       return await ResponseHelper.safeReply(
@@ -431,6 +466,7 @@ class DiscordBot {
       const rconConfig = rconManager.getConfiguration();
       const webhookStatus = webhookService.getServiceStatus();
       const dbHealth = await databaseService.healthCheck();
+      const slipStatus = slipVerification.getServiceStatus(); // ✅ เพิ่ม
 
       const statusMessage = `
 **🤖 สถานะบอท NEXArk**
@@ -442,6 +478,9 @@ class DiscordBot {
 🎮 **RCON เซิร์ฟเวอร์:** ${rconConfig.totalServers} เซิร์ฟเวอร์
 📢 **Discord Webhook:** ${
         webhookStatus.enabled ? "✅ เปิดใช้งาน" : "❌ ปิดใช้งาน"
+      }
+🧾 **Slip Verification:** ${
+        slipStatus.enabled ? "✅ EasySlip API" : "⚠️ Basic Mode"
       }
       `;
 
@@ -461,6 +500,7 @@ class DiscordBot {
     try {
       const rconConfig = rconManager.getConfiguration();
       const dbHealth = await databaseService.healthCheck();
+      const slipStatus = slipVerification.getServiceStatus(); // ✅ เพิ่ม
 
       const notificationData = {
         discordId: this.client.user.id,

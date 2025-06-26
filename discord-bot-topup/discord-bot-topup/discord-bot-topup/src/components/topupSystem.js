@@ -37,25 +37,42 @@ class TopupSystem {
     DebugHelper.info("TopupSystem initialized successfully");
   }
 
-  async registerCommands() {
-    const commands = [
-      {
-        name: "setup_menu",
-        description: "ตั้งค่าเมนูหลัก (Admin only)",
-      },
-      {
-        name: "setup_scoreboard", 
-        description: "ตั้งค่า scoreboard (Admin only)",
-      },
-    ];
+  // ใน src/components/topupSystem.js - แก้ไข registerCommands method
+async registerCommands() {
+  const commands = [
+    {
+      name: "setup_menu",
+      description: "ตั้งค่าเมนูหลัก (Admin only)",
+    },
+    {
+      name: "setup_scoreboard", 
+      description: "ตั้งค่า scoreboard (Admin only)",
+    },
+    {
+      name: "test_easyslip",  // ✅ เพิ่มคำสั่งนี้
+      description: "ทดสอบสถานะ EasySlip API (Admin only)",
+    },
+    {
+      name: "test_webhook",
+      description: "ทดสอบ Discord Webhook (Admin only)",
+    },
+    {
+      name: "test_rcon",
+      description: "ทดสอบ RCON เซิร์ฟเวอร์ (Admin only)",
+    },
+    {
+      name: "bot_status",
+      description: "ดูสถานะบอท (Admin only)",
+    },
+  ];
 
-    try {
-      await this.client.application.commands.set(commands);
-      DebugHelper.info("Commands registered successfully");
-    } catch (error) {
-      ErrorHandler.logAndThrow(error, "Command Registration");
-    }
+  try {
+    await this.client.application.commands.set(commands);
+    DebugHelper.info("Commands registered successfully");
+  } catch (error) {
+    ErrorHandler.logAndThrow(error, "Command Registration");
   }
+}
 
   async setupMenuChannel() {
     try {

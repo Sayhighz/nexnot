@@ -2,6 +2,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import DebugHelper from '../utils/debugHelper.js'; // ✅ เพิ่ม import นี้
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +34,6 @@ class ConfigService {
   
       const configData = await fs.readFile(this.configPath, 'utf8');
       console.log('📄 Config file read successfully, size:', configData.length, 'bytes');
-      console.log('🔍 First 200 chars:', configData.substring(0, 200));
       
       this.config = JSON.parse(configData);
       this.loadedAt = new Date();
@@ -41,17 +41,10 @@ class ConfigService {
       console.log('✅ Configuration loaded successfully');
       console.log('📊 Config sections found:', Object.keys(this.config));
       
-      // 🚨 เพิ่ม debug เฉพาะ sections ที่มีปัญหา
-      console.log('🔍 RCON servers debug:');
-      console.log('  - rcon_servers exists:', !!this.config.rcon_servers);
-      console.log('  - rcon_servers keys:', this.config.rcon_servers ? Object.keys(this.config.rcon_servers) : 'NULL');
-      console.log('  - rcon_servers content:', JSON.stringify(this.config.rcon_servers, null, 2));
-      
-      console.log('🔍 Discord webhook debug:');
-      console.log('  - discord_webhook exists:', !!this.config.discord_webhook);
-      console.log('  - webhook enabled:', this.config.discord_webhook?.enabled);
-      console.log('  - webhook URL exists:', !!this.config.discord_webhook?.donation_webhook_url);
-      console.log('  - webhook content:', JSON.stringify(this.config.discord_webhook, null, 2));
+      // Debug EasySlip section specifically
+      console.log('🔍 EasySlip section debug:');
+      console.log('  - easyslip exists:', !!this.config.easyslip);
+      console.log('  - easyslip content:', JSON.stringify(this.config.easyslip, null, 2));
       
       return this.config;
     } catch (error) {
@@ -97,7 +90,7 @@ class ConfigService {
     return config.database || {};
   }
 
-  // RCON Servers configuration - เพิ่มใหม่
+  // RCON Servers configuration
   getRconServersConfig() {
     const config = this.getConfig();
     const rconServers = config.rcon_servers || {};
@@ -105,7 +98,7 @@ class ConfigService {
     return rconServers;
   }
 
-  // Discord Webhook configuration - เพิ่มใหม่  
+  // Discord Webhook configuration
   getDiscordWebhookConfig() {
     const config = this.getConfig();
     const webhookConfig = config.discord_webhook || {};
@@ -122,22 +115,27 @@ class ConfigService {
     return config.rcon || {};
   }
 
-  // EasySlip configuration
+  // ✅ แก้ไข EasySlip configuration
   getEasySlipConfig() {
-  const config = this.getConfig();
-  const easyslipConfig = config.easyslip || {};
-  
-  console.log('🔍 ConfigService getEasySlipConfig debug:', {
-    fullConfig: !!config,
-    hasEasyslipSection: !!config.easyslip,
-    easyslipConfig: easyslipConfig,
-    enabled: easyslipConfig.enabled,
-    hasApiKey: !!easyslipConfig.api_key,
-    apiKeyLength: easyslipConfig.api_key ? easyslipConfig.api_key.length : 0
-  });
-  
-  return easyslipConfig;
-}
+    const config = this.getConfig();
+    const easyslipConfig = config.easyslip || {};
+    
+    DebugHelper.log('🔍 ConfigService getEasySlipConfig debug:', {
+      fullConfig: !!config,
+      hasEasyslipSection: !!config.easyslip,
+      easyslipRawConfig: config.easyslip,
+      enabled: easyslipConfig.enabled,
+      hasApiKey: !!easyslipConfig.api_key,
+      apiKeyLength: easyslipConfig.api_key ? easyslipConfig.api_key.length : 0,
+      apiKeyStart: easyslipConfig.api_key ? easyslipConfig.api_key.substring(0, 10) + '...' : 'not_set',
+      apiKeyValid: easyslipConfig.api_key && 
+                   easyslipConfig.api_key !== 'YOUR_EASYSLIP_API_KEY' && 
+                   !easyslipConfig.api_key.includes('YOUR_') &&
+                   easyslipConfig.api_key.length > 10
+    });
+    
+    return easyslipConfig;
+  }
 
   // Packages configuration
   getPackages() {
@@ -145,7 +143,7 @@ class ConfigService {
     return config.packages || [];
   }
 
-  // Donation categories - เพิ่มใหม่
+  // Donation categories
   getDonationCategories() {
     const config = this.getConfig();
     return config.donation_categories || {};
@@ -163,7 +161,7 @@ class ConfigService {
     return config.settings || {};
   }
 
-  // Channels configuration - เพิ่มใหม่
+  // Channels configuration
   getChannelsConfig() {
     const config = this.getConfig();
     return config.channels || {};
@@ -196,13 +194,13 @@ class ConfigService {
     return this.get(`${service}.enabled`, false);
   }
 
-  // Check if RCON server exists - เพิ่มใหม่
+  // Check if RCON server exists
   hasRconServer(serverKey) {
     const servers = this.getRconServersConfig();
     return servers.hasOwnProperty(serverKey);
   }
 
-  // Get specific RCON server config - เพิ่มใหม่
+  // Get specific RCON server config
   getRconServerConfig(serverKey) {
     const servers = this.getRconServersConfig();
     return servers[serverKey] || null;
@@ -332,9 +330,6 @@ class ConfigService {
       };
     }
   }
-
-  
-
 }
 
 export default new ConfigService();
