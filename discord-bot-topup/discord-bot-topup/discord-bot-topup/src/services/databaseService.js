@@ -331,38 +331,6 @@ class DatabaseService {
     }
   }
 
-  // ✅ ปรับปรุง getTribeScores ให้มี error handling ที่ดีขึ้น
-  async getTribeScores() {
-    const query = `
-      SELECT tribeId, tribeName, score, oldScore, progress, position, mode
-      FROM tribescore
-      ORDER BY position ASC
-      LIMIT 20
-    `;
-
-    try {
-      const rows = await this.executeQuery(query, [], 2); // ลด retry เหลือ 2 ครั้งสำหรับ scoreboard
-      return rows;
-    } catch (error) {
-      console.error("❌ Error getting tribe scores:", error);
-
-      // ถ้า table ไม่มี ให้คืน array ว่าง
-      if (error.code === "ER_NO_SUCH_TABLE") {
-        console.warn("⚠️ tribescore table not found, returning empty array");
-        return [];
-      }
-
-      // ถ้าเป็น connection error ให้คืน array ว่างแทนการ throw error
-      if (this.isConnectionError(error)) {
-        console.warn("⚠️ Database connection issue for scoreboard, returning empty array");
-        return [];
-      }
-
-      // สำหรับ error อื่นๆ ให้คืน array ว่าง
-      console.warn("⚠️ Scoreboard query failed, returning empty array");
-      return [];
-    }
-  }
 
   // ส่วนอื่นๆ ยังเหมือนเดิม (logDonationTransaction, updateTopupStatus, etc.)
   async logDonationTransaction(data) {

@@ -1,13 +1,13 @@
-// src/index.js (Full Code - รวมการแก้ไขทั้งหมด)
+// src/index.js (Full Code - เอา ScoreboardManager ออกทั้งหมด)
 import { Client, GatewayIntentBits } from "discord.js";
 import configService from "./services/configService.js";
 import databaseService from "./services/databaseService.js";
 import webhookService from "./services/webhookService.js";
 import TopupSystem from "./components/topupSystem.js";
-import ScoreboardManager from "./components/scoreboardManager.js";
+// ❌ เอาบรรทัดนี้ออก: import ScoreboardManager from "./components/scoreboardManager.js";
 import rconManager from "./components/rconManager.js";
 import logService from "./services/logService.js";
-import slipVerification from "./components/slipVerification.js"; // ✅ เปิดการใช้งาน
+import slipVerification from "./components/slipVerification.js";
 
 // Import new utilities
 import ErrorHandler from "./utils/errorHandler.js";
@@ -18,7 +18,7 @@ class DiscordBot {
   constructor() {
     this.client = null;
     this.topupSystem = null;
-    this.scoreboardManager = null;
+    // ❌ เอาบรรทัดนี้ออก: this.scoreboardManager = null;
     this.isShuttingDown = false;
   }
 
@@ -91,7 +91,7 @@ class DiscordBot {
   async testServices() {
     DebugHelper.info("Testing services...");
 
-    // ✅ เพิ่มการทดสอบ Slip Verification Service
+    // Test Slip Verification Service
     console.log("\n🔍 Testing Slip Verification Service...");
     const slipVerificationStatus = slipVerification.getServiceStatus();
     console.log("Slip Verification Status:", slipVerificationStatus);
@@ -143,7 +143,7 @@ class DiscordBot {
 
     // Initialize systems
     this.topupSystem = new TopupSystem(this.client);
-    this.scoreboardManager = new ScoreboardManager(this.client);
+    // ❌ เอาบรรทัดนี้ออก: this.scoreboardManager = new ScoreboardManager(this.client);
   }
 
   async initializeDatabase() {
@@ -168,7 +168,7 @@ class DiscordBot {
 
       try {
         await this.topupSystem.init();
-        await this.scoreboardManager.init();
+        // ❌ เอาบรรทัดนี้ออก: await this.scoreboardManager.init();
 
         DebugHelper.info("All systems initialized successfully!");
 
@@ -198,13 +198,17 @@ class DiscordBot {
             userId: interaction.user.id,
           });
 
-          if (interaction.customId.startsWith("scoreboard_")) {
-            await this.scoreboardManager.handleScoreboardNavigation(
-              interaction
-            );
-          } else {
-            await this.topupSystem.handleButtonInteraction(interaction);
-          }
+          // ❌ เอาส่วนนี้ออก:
+          // if (interaction.customId.startsWith("scoreboard_")) {
+          //   await this.scoreboardManager.handleScoreboardNavigation(
+          //     interaction
+          //   );
+          // } else {
+          //   await this.topupSystem.handleButtonInteraction(interaction);
+          // }
+
+          // ✅ แก้เป็น:
+          await this.topupSystem.handleButtonInteraction(interaction);
         } else if (interaction.isStringSelectMenu()) {
           await this.topupSystem.handleSelectMenuInteraction(interaction);
         } else if (interaction.isModalSubmit()) {
@@ -273,16 +277,17 @@ class DiscordBot {
         case "setup_menu":
           await this.handleSetupMenuCommand(interaction);
           break;
-        case "setup_scoreboard":
-          await this.handleSetupScoreboardCommand(interaction);
-          break;
+        // ❌ เอา case นี้ออก:
+        // case "setup_scoreboard":
+        //   await this.handleSetupScoreboardCommand(interaction);
+        //   break;
         case "test_webhook":
           await this.handleTestWebhookCommand(interaction);
           break;
         case "test_rcon":
           await this.handleTestRconCommand(interaction);
           break;
-        case "test_easyslip":  // ✅ เพิ่มคำสั่งใหม่
+        case "test_easyslip":
           await this.handleTestEasySlipCommand(interaction);
           break;
         case "bot_status":
@@ -318,25 +323,26 @@ class DiscordBot {
     }
   }
 
-  async handleSetupScoreboardCommand(interaction) {
-    if (!interaction.member.permissions.has("Administrator")) {
-      return await ResponseHelper.safeReply(
-        interaction,
-        "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้"
-      );
-    }
-
-    await ResponseHelper.safeDefer(interaction);
-
-    try {
-      await this.scoreboardManager.setupPermanentScoreboard(
-        interaction.channel
-      );
-      await interaction.editReply("✅ ตั้งค่า Scoreboard เรียบร้อยแล้ว");
-    } catch (error) {
-      await interaction.editReply("❌ เกิดข้อผิดพลาดในการตั้งค่า Scoreboard");
-    }
-  }
+  // ❌ เอา method นี้ออกทั้งหมด:
+  // async handleSetupScoreboardCommand(interaction) {
+  //   if (!interaction.member.permissions.has("Administrator")) {
+  //     return await ResponseHelper.safeReply(
+  //       interaction,
+  //       "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้"
+  //     );
+  //   }
+  //
+  //   await ResponseHelper.safeDefer(interaction);
+  //
+  //   try {
+  //     await this.scoreboardManager.setupPermanentScoreboard(
+  //       interaction.channel
+  //     );
+  //     await interaction.editReply("✅ ตั้งค่า Scoreboard เรียบร้อยแล้ว");
+  //   } catch (error) {
+  //     await interaction.editReply("❌ เกิดข้อผิดพลาดในการตั้งค่า Scoreboard");
+  //   }
+  // }
 
   async handleTestWebhookCommand(interaction) {
     if (!interaction.member.permissions.has("Administrator")) {
@@ -395,7 +401,6 @@ class DiscordBot {
     }
   }
 
-  // ✅ เพิ่ม method ใหม่สำหรับทดสอบ EasySlip
   async handleTestEasySlipCommand(interaction) {
     if (!interaction.member.permissions.has("Administrator")) {
       return await ResponseHelper.safeReply(
@@ -466,7 +471,7 @@ ${!slipStatus.enabled ?
       const rconConfig = rconManager.getConfiguration();
       const webhookStatus = webhookService.getServiceStatus();
       const dbHealth = await databaseService.healthCheck();
-      const slipStatus = slipVerification.getServiceStatus(); // ✅ เพิ่ม
+      const slipStatus = slipVerification.getServiceStatus();
 
       const statusMessage = `
 **🤖 สถานะบอท NEXArk**
@@ -500,7 +505,7 @@ ${!slipStatus.enabled ?
     try {
       const rconConfig = rconManager.getConfiguration();
       const dbHealth = await databaseService.healthCheck();
-      const slipStatus = slipVerification.getServiceStatus(); // ✅ เพิ่ม
+      const slipStatus = slipVerification.getServiceStatus();
 
       const notificationData = {
         discordId: this.client.user.id,
@@ -540,9 +545,10 @@ ${!slipStatus.enabled ?
         await this.topupSystem.shutdown();
       }
 
-      if (this.scoreboardManager) {
-        this.scoreboardManager.shutdown();
-      }
+      // ❌ เอาส่วนนี้ออก:
+      // if (this.scoreboardManager) {
+      //   this.scoreboardManager.shutdown();
+      // }
 
       if (rconManager) {
         await rconManager.shutdown();

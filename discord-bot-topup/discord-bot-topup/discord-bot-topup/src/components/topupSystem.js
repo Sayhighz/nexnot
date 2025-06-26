@@ -45,11 +45,7 @@ async registerCommands() {
       description: "ตั้งค่าเมนูหลัก (Admin only)",
     },
     {
-      name: "setup_scoreboard", 
-      description: "ตั้งค่า scoreboard (Admin only)",
-    },
-    {
-      name: "test_easyslip",  // ✅ เพิ่มคำสั่งนี้
+      name: "test_easyslip",
       description: "ทดสอบสถานะ EasySlip API (Admin only)",
     },
     {
