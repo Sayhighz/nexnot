@@ -3,14 +3,29 @@
   "version": "1.0.0",
   "description": "Discord bot for automatic topup system with ARK server integration",
   "main": "src/index.js",
+  "bin": {
+    "nexark-bot": "src/index.js"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node src/test.js",
-    "build": "pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --output dist/nexark-bot",
-    "build-win": "pkg . --targets node18-win-x64 --output dist/nexark-bot-win.exe",
-    "bundle": "esbuild src/index.js --bundle --outfile=build/index.js --format=cjs --platform=node --external:sharp --external:canvas --external:mysql2",
-    "pkg-bundle": "npm run bundle && pkg build/index.js --targets node18-win-x64 --output dist/nexark-bot-bundled.exe"
+    "clean": "rimraf dist build",
+    "prebuild": "npm run clean",
+    "build": "npm run build-bundle",
+    "build-win": "npm run build-simple",
+    "build-simple": "pkg . --targets node18-win-x64 --output dist/nexark-bot-win.exe --no-bytecode --public",
+    "build-bundle": "npm run bundle && npm run build-exe && npm run copy-assets",
+    "build-complete": "node build-complete.js",
+    "install-deps": "npm install rimraf --save-dev",
+    "bundle": "esbuild src/index.js --bundle --outfile=build/index.js --format=cjs --platform=node --external:sharp --external:canvas --external:mysql2 --external:@mapbox/node-pre-gyp",
+    "build-exe": "pkg build/index.js --targets node18-win-x64 --output dist/nexark-bot-bundled.exe --no-bytecode --public",
+    "copy-assets": "npm run copy-config && npm run copy-natives && npm run create-batch",
+    "copy-config": "if exist config xcopy config dist\\config\\ /E /I /Y",
+    "copy-natives": "npm run copy-sharp && npm run copy-canvas",
+    "copy-sharp": "if exist node_modules\\sharp\\build xcopy node_modules\\sharp\\build dist\\sharp\\build\\ /E /I /Y && if exist node_modules\\sharp\\vendor xcopy node_modules\\sharp\\vendor dist\\sharp\\vendor\\ /E /I /Y",
+    "copy-canvas": "if exist node_modules\\canvas\\build xcopy node_modules\\canvas\\build dist\\canvas\\build\\ /E /I /Y",
+    "create-batch": "echo @echo off > dist\\start.bat && echo echo Starting NEXArk Discord Bot... >> dist\\start.bat && echo if not exist \"config\\config.json\" ( >> dist\\start.bat && echo   echo Config file not found! Please create config\\config.json >> dist\\start.bat && echo   pause >> dist\\start.bat && echo   exit /b 1 >> dist\\start.bat && echo ^) >> dist\\start.bat && echo nexark-bot-bundled.exe >> dist\\start.bat && echo pause >> dist\\start.bat"
   },
   "keywords": [
     "discord",
@@ -23,7 +38,7 @@
   "author": "Sayhigh",
   "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.2",
+    "axios": "^0.27.2",
     "canvas": "^2.11.2",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
@@ -32,19 +47,28 @@
     "node-cron": "^3.0.3",
     "qrcode": "^1.5.3",
     "rcon-client": "^4.2.5",
-    "sharp": "^0.33.1"
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
+    "esbuild": "^0.19.0",
     "nodemon": "^3.0.2",
-    "esbuild": "^0.19.0"
+    "rimraf": "^3.0.2"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "pkg": {
-    "scripts": ["src/**/*.js"],
-    "assets": ["config/**/*", "logs/**/*"],
-    "targets": ["node18-win-x64"],
+    "scripts": [
+      "src/**/*.js"
+    ],
+    "assets": [
+      "config/**/*",
+      "logs/**/*",
+      ".env.*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
     "outputPath": "dist"
   }
 }

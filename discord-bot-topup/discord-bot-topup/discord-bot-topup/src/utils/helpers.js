@@ -1,15 +1,14 @@
-// src/utils/helpers.js
 const fs = require('fs').promises;
 const path = require('path');
 
 class Helpers {
   static async loadConfig() {
     try {
-      const configPath = path.join(__dirname, '../../config/config.json');
+      const configPath = path.join(process.cwd(), 'config', 'config.json');
       const configData = await fs.readFile(configPath, 'utf8');
       return JSON.parse(configData);
     } catch (error) {
-      throw new Error('Cannot load configuration file');
+      throw new Error(`Cannot load configuration file: ${error.message}`);
     }
   }
 
@@ -18,7 +17,6 @@ class Helpers {
   }
 
   static validateSteam64(steam64) {
-    // Steam64 ID should be 17 digits and start with 7656119
     const steam64Pattern = /^7656119\d{10}$/;
     return steam64Pattern.test(steam64);
   }
@@ -62,21 +60,22 @@ class Helpers {
     }
   }
 
-  static async cleanupTempFiles(maxAge = 3600000) { // 1 hour
+  static async cleanupTempFiles(maxAge = 3600000) {
     try {
-      const tempDir = path.join(__dirname, '../../temp');
+      const tempDir = path.join(process.cwd(), 'temp');
       const files = await fs.readdir(tempDir);
-      
+
       for (const file of files) {
         const filePath = path.join(tempDir, file);
         const stats = await fs.stat(filePath);
-        
+
         if (Date.now() - stats.mtime.getTime() > maxAge) {
           await fs.unlink(filePath);
+          console.log(`🗑️ Cleaned up temp file: ${file}`);
         }
       }
     } catch (error) {
-      // Silent fail for cleanup
+      console.error('❌ Error cleaning temp files:', error);
     }
   }
 
@@ -90,19 +89,20 @@ class Helpers {
 
   static async retry(fn, maxRetries = 3, delay = 1000) {
     let lastError;
-    
+
     for (let i = 0; i < maxRetries; i++) {
       try {
         return await fn();
       } catch (error) {
         lastError = error;
         if (i < maxRetries - 1) {
+          console.log(`⚠️ Retry attempt ${i + 1}/${maxRetries} after ${delay}ms`);
           await this.sleep(delay);
-          delay *= 2; // Exponential backoff
+          delay *= 2;
         }
       }
     }
-    
+
     throw lastError;
   }
 }

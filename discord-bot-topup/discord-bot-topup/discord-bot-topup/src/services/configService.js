@@ -5,7 +5,7 @@ const path = require('path');
 class ConfigService {
   constructor() {
     this.config = null;
-    this.configPath = path.join(__dirname, '../../config/config.json');
+    this.configPath = path.join(process.cwd(), 'config', 'config.json');
     this.loadedAt = null;
   }
 

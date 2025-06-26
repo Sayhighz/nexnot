@@ -2,13 +2,9 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 const configService = require("./services/configService");
 const databaseService = require("./services/databaseService");
-const webhookService = require("./services/webhookService");
-const TopupSystem = require("./components/topupSystem");
-const rconManager = require("./components/rconManager");
-const logService = require("./services/logService");
-const slipVerification = require("./components/slipVerification");
+const logService = require("./services/logService"); // ย้ายมาไว้ด้านบน
 
-// Import utilities
+// Import utilities first (ไม่ต้องใช้ config)
 const ErrorHandler = require("./utils/errorHandler");
 const DebugHelper = require("./utils/debugHelper");
 const ResponseHelper = require("./utils/responseHelper");
@@ -18,14 +14,23 @@ class DiscordBot {
     this.client = null;
     this.topupSystem = null;
     this.isShuttingDown = false;
+    
+    // Initialize dependent services after config is loaded
+    this.webhookService = null;
+    this.slipVerification = null; 
+    this.rconManager = null;
+    this.TopupSystem = null;
   }
 
   async init() {
     try {
-      await logService.info("Starting NEXArk Discord Bot...");
+      await logService.info("Starting NEXArk Discord Bot..."); // ใช้ logService ตรงๆ
 
-      // Test and load configuration
+      // Test and load configuration FIRST
       await this.initializeConfiguration();
+
+      // THEN initialize services that need config
+      await this.initializeDependentServices();
 
       // Initialize Discord client
       await this.initializeDiscordClient();
@@ -50,13 +55,13 @@ class DiscordBot {
   }
 
   async initializeConfiguration() {
-    await logService.info("Testing configuration file...");
+    console.log("Testing configuration file...");
     const configTest = await configService.testConfigFile();
     if (!configTest.success) {
       throw new Error(`Config file test failed: ${configTest.error}`);
     }
 
-    await logService.info("Loading configuration...");
+    console.log("Loading configuration...");
     await configService.loadConfig();
 
     // Validate configuration
@@ -78,45 +83,26 @@ class DiscordBot {
       }
     }
 
-    // Reinitialize services with new config
-    webhookService.reloadConfig();
-    rconManager.reloadConfig();
-
-    await logService.info("Configuration loaded and services reinitialized");
+    console.log("Configuration loaded successfully");
   }
 
-  async testServices() {
-    await logService.info("Testing services...");
-
-    // Test Slip Verification Service
-    const slipVerificationStatus = slipVerification.getServiceStatus();
-    await logService.info("Slip Verification Status:", slipVerificationStatus);
+  async initializeDependentServices() {
+    console.log("Initializing dependent services...");
     
-    if (!slipVerificationStatus.enabled) {
-      await logService.warn("EasySlip API is DISABLED - using basic validation mode");
-    } else {
-      await logService.info("EasySlip API is ENABLED and configured properly");
-    }
-
-    // Test webhook
-    const webhookStatus = webhookService.getServiceStatus();
-    if (webhookStatus.enabled && webhookStatus.webhookUrlValid) {
-      const webhookTest = await webhookService.testWebhook();
-      if (webhookTest.success) {
-        await logService.info("Discord webhook test successful");
-      } else {
-        await logService.warn("Discord webhook test failed:", webhookTest.error);
-      }
-    }
-
-    // Test RCON
-    const rconConfig = rconManager.getConfiguration();
-    if (rconConfig.totalServers > 0) {
-      const testResults = await rconManager.testAllServers();
-      await logService.info(
-        `RCON test results: ${testResults.successful}/${testResults.total} servers responding`
-      );
-    }
+    // Set configService for databaseService
+    databaseService.setConfigService(configService);
+    
+    // Now require services that need config (after config is loaded)
+    this.webhookService = require("./services/webhookService");
+    this.slipVerification = require("./components/slipVerification");
+    this.rconManager = require("./components/rconManager");
+    this.TopupSystem = require("./components/topupSystem");
+    
+    // Reload configurations for services
+    this.webhookService.reloadConfig();
+    this.rconManager.reloadConfig();
+    
+    console.log("Dependent services initialized");
   }
 
   async initializeDiscordClient() {
@@ -137,7 +123,7 @@ class DiscordBot {
     });
 
     // Initialize systems
-    this.topupSystem = new TopupSystem(this.client);
+    this.topupSystem = new this.TopupSystem(this.client);
   }
 
   async initializeDatabase() {
@@ -145,6 +131,40 @@ class DiscordBot {
     await databaseService.connect();
     await databaseService.createTables();
     await logService.info("Database connected and tables created");
+  }
+
+  async testServices() {
+    await logService.info("Testing services...");
+
+    // Test Slip Verification Service
+    const slipVerificationStatus = this.slipVerification.getServiceStatus();
+    await logService.info("Slip Verification Status:", slipVerificationStatus);
+    
+    if (!slipVerificationStatus.enabled) {
+      await logService.warn("EasySlip API is DISABLED - using basic validation mode");
+    } else {
+      await logService.info("EasySlip API is ENABLED and configured properly");
+    }
+
+    // Test webhook
+    const webhookStatus = this.webhookService.getServiceStatus();
+    if (webhookStatus.enabled && webhookStatus.webhookUrlValid) {
+      const webhookTest = await this.webhookService.testWebhook();
+      if (webhookTest.success) {
+        await logService.info("Discord webhook test successful");
+      } else {
+        await logService.warn("Discord webhook test failed:", webhookTest.error);
+      }
+    }
+
+    // Test RCON
+    const rconConfig = this.rconManager.getConfiguration();
+    if (rconConfig.totalServers > 0) {
+      const testResults = await this.rconManager.testAllServers();
+      await logService.info(
+        `RCON test results: ${testResults.successful}/${testResults.total} servers responding`
+      );
+    }
   }
 
   setupEventListeners() {
@@ -163,7 +183,7 @@ class DiscordBot {
         await logService.info("All systems initialized successfully!");
 
         // Send startup notification
-        if (webhookService.getServiceStatus().enabled) {
+        if (this.webhookService.getServiceStatus().enabled) {
           await this.sendStartupNotification();
         }
       } catch (error) {
@@ -303,7 +323,7 @@ class DiscordBot {
     await ResponseHelper.safeDefer(interaction);
 
     try {
-      const result = await webhookService.testWebhook();
+      const result = await this.webhookService.testWebhook();
       const message = result.success
         ? "✅ ทดสอบ webhook สำเร็จ"
         : `❌ ทดสอบ webhook ล้มเหลว: ${result.error}`;
@@ -325,7 +345,7 @@ class DiscordBot {
     await ResponseHelper.safeDefer(interaction);
 
     try {
-      const rconConfig = rconManager.getConfiguration();
+      const rconConfig = this.rconManager.getConfiguration();
 
       if (rconConfig.totalServers === 0) {
         return await interaction.editReply(
@@ -333,7 +353,7 @@ class DiscordBot {
         );
       }
 
-      const testResults = await rconManager.testAllServers();
+      const testResults = await this.rconManager.testAllServers();
       const results = Object.entries(testResults.results).map(
         ([serverKey, result]) =>
           `**${serverKey}**: ${
@@ -360,7 +380,7 @@ class DiscordBot {
     await ResponseHelper.safeDefer(interaction);
 
     try {
-      const slipStatus = slipVerification.getServiceStatus();
+      const slipStatus = this.slipVerification.getServiceStatus();
       const config = configService.get('easyslip', {});
       
       const statusMessage = `
@@ -400,10 +420,10 @@ ${slipStatus.enabled
       const minutes = Math.floor((uptime % 3600) / 60);
 
       const memoryMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-      const rconConfig = rconManager.getConfiguration();
-      const webhookStatus = webhookService.getServiceStatus();
+      const rconConfig = this.rconManager.getConfiguration();
+      const webhookStatus = this.webhookService.getServiceStatus();
       const dbHealth = await databaseService.healthCheck();
-      const slipStatus = slipVerification.getServiceStatus();
+      const slipStatus = this.slipVerification.getServiceStatus();
 
       const statusMessage = `
 **🤖 สถานะบอท NEXArk**
@@ -435,9 +455,9 @@ ${slipStatus.enabled
 
   async sendStartupNotification() {
     try {
-      const rconConfig = rconManager.getConfiguration();
+      const rconConfig = this.rconManager.getConfiguration();
       const dbHealth = await databaseService.healthCheck();
-      const slipStatus = slipVerification.getServiceStatus();
+      const slipStatus = this.slipVerification.getServiceStatus();
 
       const notificationData = {
         discordId: this.client.user.id,
@@ -454,7 +474,7 @@ ${slipStatus.enabled
         timestamp: new Date().toISOString(),
       };
 
-      await webhookService.sendDonationNotification(notificationData);
+      await this.webhookService.sendDonationNotification(notificationData);
     } catch (error) {
       await logService.error("Error sending startup notification:", error);
     }
@@ -468,7 +488,7 @@ ${slipStatus.enabled
 
     try {
       // Send shutdown notification
-      if (webhookService?.getServiceStatus().enabled) {
+      if (this.webhookService?.getServiceStatus().enabled) {
         await this.sendShutdownNotification();
       }
 
@@ -477,8 +497,8 @@ ${slipStatus.enabled
         await this.topupSystem.shutdown();
       }
 
-      if (rconManager) {
-        await rconManager.shutdown();
+      if (this.rconManager) {
+        await this.rconManager.shutdown();
       }
 
       // Close database connection
@@ -514,7 +534,7 @@ ${slipStatus.enabled
         timestamp: new Date().toISOString(),
       };
 
-      await webhookService.sendDonationNotification(notificationData);
+      await this.webhookService.sendDonationNotification(notificationData);
     } catch (error) {
       await logService.error("Error sending shutdown notification:", error);
     }
