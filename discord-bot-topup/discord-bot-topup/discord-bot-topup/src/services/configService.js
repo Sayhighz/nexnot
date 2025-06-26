@@ -117,25 +117,38 @@ class ConfigService {
 
   // ✅ แก้ไข EasySlip configuration
   getEasySlipConfig() {
-    const config = this.getConfig();
-    const easyslipConfig = config.easyslip || {};
-    
-    DebugHelper.log('🔍 ConfigService getEasySlipConfig debug:', {
-      fullConfig: !!config,
-      hasEasyslipSection: !!config.easyslip,
-      easyslipRawConfig: config.easyslip,
-      enabled: easyslipConfig.enabled,
-      hasApiKey: !!easyslipConfig.api_key,
-      apiKeyLength: easyslipConfig.api_key ? easyslipConfig.api_key.length : 0,
-      apiKeyStart: easyslipConfig.api_key ? easyslipConfig.api_key.substring(0, 10) + '...' : 'not_set',
-      apiKeyValid: easyslipConfig.api_key && 
-                   easyslipConfig.api_key !== 'YOUR_EASYSLIP_API_KEY' && 
-                   !easyslipConfig.api_key.includes('YOUR_') &&
-                   easyslipConfig.api_key.length > 10
-    });
-    
-    return easyslipConfig;
+  const config = this.getConfig();
+  
+  // ✅ เพิ่ม debug ละเอียด
+  console.log('🔍 ConfigService Debug:', {
+    configExists: !!config,
+    configKeys: config ? Object.keys(config) : [],
+    hasEasyslip: !!(config && config.easyslip),
+    easyslipRaw: config ? config.easyslip : null
+  });
+  
+  if (!config) {
+    console.error('❌ No config loaded in ConfigService');
+    return {};
   }
+  
+  if (!config.easyslip) {
+    console.error('❌ No easyslip section in config');
+    console.log('Available sections:', Object.keys(config));
+    return {};
+  }
+  
+  const easyslipConfig = config.easyslip;
+  
+  console.log('✅ EasySlip config found:', {
+    enabled: easyslipConfig.enabled,
+    hasApiKey: !!easyslipConfig.api_key,
+    apiKeyLength: easyslipConfig.api_key ? easyslipConfig.api_key.length : 0,
+    hasApiUrl: !!easyslipConfig.api_url
+  });
+  
+  return easyslipConfig;
+}
 
   // Packages configuration
   getPackages() {

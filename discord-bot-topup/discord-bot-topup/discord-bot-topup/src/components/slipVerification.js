@@ -27,50 +27,86 @@ class SlipVerification {
   }
 
   initializeConfig() {
+  try {
+    console.log('🔍 [SLIP] Starting EasySlip initialization...');
+    
+    // ✅ ลองหลายวิธีในการโหลด config
+    let easyslipConfig = null;
+    
+    // วิธีที่ 1: ใช้ getEasySlipConfig()
     try {
-      DebugHelper.info("🔍 Initializing EasySlip configuration...");
+      easyslipConfig = configService.getEasySlipConfig();
+      console.log('🔍 [SLIP] Method 1 - getEasySlipConfig():', easyslipConfig);
+    } catch (error) {
+      console.error('❌ [SLIP] Method 1 failed:', error.message);
+    }
+    
+    // วิธีที่ 2: เข้าถึงตรงๆ ผ่าน getConfig()
+    if (!easyslipConfig || !easyslipConfig.api_key) {
+      try {
+        const fullConfig = configService.getConfig();
+        easyslipConfig = fullConfig ? fullConfig.easyslip : null;
+        console.log('🔍 [SLIP] Method 2 - direct access:', easyslipConfig);
+      } catch (error) {
+        console.error('❌ [SLIP] Method 2 failed:', error.message);
+      }
+    }
+    
+    // วิธีที่ 3: ใช้ configService.get()
+    if (!easyslipConfig || !easyslipConfig.api_key) {
+      try {
+        easyslipConfig = configService.get('easyslip', {});
+        console.log('🔍 [SLIP] Method 3 - configService.get():', easyslipConfig);
+      } catch (error) {
+        console.error('❌ [SLIP] Method 3 failed:', error.message);
+      }
+    }
+    
+    // ตรวจสอบผลลัพธ์
+    if (easyslipConfig && easyslipConfig.api_key) {
+      this.config = easyslipConfig;
+      this.apiKey = easyslipConfig.api_key;
+      this.apiUrl = easyslipConfig.api_url || 'https://developer.easyslip.com/api/v1/verify';
       
-      this.config = configService.getEasySlipConfig();
+      // ตรวจสอบ API key
+      if (this.apiKey && this.apiKey.length > 20) {
+        this.isEnabled = true;
+        console.log('🎉 [SLIP] EasySlip API loaded from config and ENABLED!');
+        console.log('🔑 [SLIP] API Key:', this.apiKey.substring(0, 15) + '...');
+      } else {
+        this.isEnabled = false;
+        console.log('❌ [SLIP] Invalid API key from config');
+      }
+    } else {
+      console.log('❌ [SLIP] Failed to load config, falling back to hardcode');
       
-      DebugHelper.log("EasySlip config loaded:", {
-        hasConfig: !!this.config,
-        configKeys: this.config ? Object.keys(this.config) : [],
-        enabled: this.config?.enabled,
-        hasApiKey: !!this.config?.api_key,
-        apiKeyLength: this.config?.api_key ? this.config.api_key.length : 0,
-        apiKeyStart: this.config?.api_key ? this.config.api_key.substring(0, 10) + '...' : 'none',
-        apiUrl: this.config?.api_url
-      });
+      // ✅ Fallback ไปใช้ hard-code ถ้าโหลดไม่ได้
+      this.config = {
+        enabled: true,
+        api_key: "21452005-0f7b-4f7a-88a0-8c36745fb36e",
+        api_url: "https://developer.easyslip.com/api/v1/verify"
+      };
       
       this.apiKey = this.config.api_key;
-      this.apiUrl = this.config.api_url || 'https://developer.easyslip.com/api/v1/verify';
+      this.apiUrl = this.config.api_url;
+      this.isEnabled = true;
       
-      // ✅ ปรับปรุงการตรวจสอบ configuration
-      const hasValidApiKey = this.apiKey && 
-                            this.apiKey !== 'YOUR_EASYSLIP_API_KEY' && 
-                            this.apiKey.length > 10 &&
-                            !this.apiKey.includes('YOUR_') &&
-                            !this.apiKey.includes('EXAMPLE');
-      
-      this.isEnabled = this.config.enabled === true && hasValidApiKey;
-      
-      if (!this.config.enabled) {
-        DebugHelper.warn('⚠️ EasySlip is DISABLED in config');
-      } else if (!hasValidApiKey) {
-        DebugHelper.warn('⚠️ EasySlip API key is invalid or not set properly');
-        DebugHelper.warn(`   Current API key: ${this.apiKey ? this.apiKey.substring(0, 10) + '...' : 'null'}`);
-      } else {
-        DebugHelper.info('✅ EasySlip API configured and enabled properly');
-      }
-      
-      DebugHelper.info(`EasySlip Final Status: ${this.isEnabled ? 'ENABLED' : 'DISABLED'}`);
-      
-    } catch (error) {
-      DebugHelper.error('❌ Error initializing EasySlip config:', error);
-      this.isEnabled = false;
-      this.apiKey = null;
+      console.log('🔄 [SLIP] Using hardcoded fallback config');
     }
+    
+    console.log('✅ [SLIP] Final initialization result:', {
+      enabled: this.isEnabled,
+      hasApiKey: !!this.apiKey,
+      configSource: easyslipConfig && easyslipConfig.api_key ? 'file' : 'hardcode'
+    });
+    
+  } catch (error) {
+    console.error('❌ [SLIP] Critical initialization error:', error);
+    this.isEnabled = false;
+    this.apiKey = null;
+    this.config = {};
   }
+}
 
   async initTempDirectory() {
     await Helpers.ensureDirectoryExists(this.tempDir);
@@ -657,15 +693,21 @@ class SlipVerification {
   }
 
   getServiceStatus() {
-    return {
-      enabled: this.isEnabled,
-      hasApiKey: !!this.apiKey,
-      apiKeyValid: this.apiKey && this.apiKey !== 'YOUR_EASYSLIP_API_KEY' && this.apiKey.length > 10,
-      apiUrl: this.apiUrl,
-      configLoaded: !!this.config,
-      validationMode: this.isEnabled ? 'easyslip_api' : 'basic_validation'
-    };
-  }
+  return {
+    enabled: this.isEnabled,
+    hasApiKey: !!this.apiKey,
+    apiKeyValid: this.apiKey && this.apiKey.length >= 30, // ลดเงื่อนไข
+    apiUrl: this.apiUrl,
+    configLoaded: !!this.config,
+    validationMode: this.isEnabled ? 'easyslip_api' : 'basic_validation',
+    // ✅ เพิ่มข้อมูล debug
+    debug: {
+      apiKeyLength: this.apiKey ? this.apiKey.length : 0,
+      apiKeyStart: this.apiKey ? this.apiKey.substring(0, 10) + '...' : 'none',
+      configEnabled: this.config?.enabled
+    }
+  };
+}
 }
 
 export default new SlipVerification();
